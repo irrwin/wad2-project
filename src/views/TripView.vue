@@ -46,6 +46,7 @@
       <div v-show="activeTab === 'itinerary'">
         <FlightDelayWidget v-if="isDemo" />
         <ItineraryView
+          :key="'itinerary-' + itineraryRevision"
           :trip-id="id"
           :destination="itineraryInfo.destination"
           :start-date="itineraryInfo.startDate"
@@ -55,8 +56,14 @@
           @itinerary-change="updatePackingActivities" />
       </div>
       <div v-if="activeTab === 'voting'">
-        <GroupVoting v-if="isDemo" />
-        <div v-else class="card p-4 text-center text-muted"><h5>No group decisions yet</h5><p class="mb-0">Voting for your own trips is coming soon.</p></div>
+        <GroupVoting
+          :trip-id="id"
+          :destination="itineraryInfo.destination"
+          :travellers="isDemo ? ['Sarah', 'John', 'Amy'] : trip.travellers"
+          :start-date="itineraryInfo.startDate"
+          :end-date="itineraryInfo.endDate"
+          :demo="isDemo"
+          @decision-scheduled="handleDecisionScheduled" />
       </div>
       <div v-show="activeTab === 'packing'">
         <PackingView :has-outdoor-activity="hasOutdoorActivity" />
@@ -87,7 +94,7 @@
 <script>
 import axios from 'axios'
 import ItineraryView from '../components/ItineraryView.vue'
-import GroupVoting from '../components/GroupVoting.vue'
+import GroupVoting from '../components/GroupDecisionPanel.vue'
 import PackingView from '../components/PackingView.vue'
 import PhotosView from '../components/PhotosView.vue'
 import ExpensesView from '../components/ExpensesView.vue'
@@ -106,7 +113,8 @@ export default {
       safetyWarning: '',
       trip: null,
       loading: true,
-      loadError: ''
+      loadError: '',
+      itineraryRevision: 0
     }
   },
   computed: {
@@ -144,6 +152,12 @@ export default {
   methods: {
     updatePackingActivities(activities) {
       this.hasOutdoorActivity = activities.some((activity) => activity.outdoor)
+    },
+    handleDecisionScheduled(result) {
+      if (!this.isDemo && result.itinerary) {
+        this.trip.stops = result.itinerary
+        this.itineraryRevision += 1
+      }
     },
     /*
       handleRiskChange()

@@ -12,7 +12,13 @@ const tripSchema = new mongoose.Schema({
   // stop = { id, name, address|null, date 'YYYY-MM-DD', hour, duration|null, outdoor, locked }
   stops: { type: [mongoose.Schema.Types.Mixed], default: [] },
   // wishlist item = { id, name, address|null }  (indoor backups for rainy days)
-  wishlist: { type: [mongoose.Schema.Types.Mixed], default: [] }
+  wishlist: { type: [mongoose.Schema.Types.Mixed], default: [] },
+
+  // Group decisions stay embedded in the trip so voting and itinerary updates
+  // can be saved together. See routes/trips.js for validation.
+  decisions: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  // profile = { traveller, pace, budget }
+  memberPreferences: { type: [mongoose.Schema.Types.Mixed], default: [] }
 }, { timestamps: true })
 
 export default mongoose.model('Trip', tripSchema)
