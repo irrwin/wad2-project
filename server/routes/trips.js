@@ -2,103 +2,108 @@ import express from 'express'
 import mongoose from 'mongoose'
 import Trip from '../models/trip.js'
 import User from '../models/User.js'
+import Photo from '../models/Photo.js'
+import Group from '../models/Group.js'
 import { requireAuth } from './auth.js'
+import { findTripFor, memberName, roleOf, ensureMembers, newInviteCode, accessQuery, addGroupMember } from '../tripAccess.js'
 
 const router = express.Router()
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-const PACE_LEVELS = ['relaxed', 'balanced', 'packed']
-const BUDGET_LEVELS = ['budget', 'midrange', 'luxury']
 
-function uniqueTravellers(travellers = []) {
-  const seen = new Set()
-  return travellers.filter((name) => {
-    const key = String(name).trim().toLowerCase()
-    if (!key || seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
+// Same keys as src/tripOptions.js
+const ACTIVITY_KEYS = ['sightseeing', 'food', 'shopping', 'beach', 'hiking', 'snow', 'themepark', 'nightlife', 'business', 'camping']
+const WEATHER_KEYS = ['hot', 'mild', 'cold', 'rain']
+const EXTRA_KEYS = ['laundry', 'carryon', 'kids', 'flight']
+const PACKING_CATEGORIES = ['docs', 'clothes', 'toiletries', 'health', 'tech', 'gear', 'other']
 
-function quorumFor(trip) {
-  return Math.floor(uniqueTravellers(trip.travellers).length / 2) + 1
-}
-
-function compatibilityFor(trip) {
-  const travellers = uniqueTravellers(trip.travellers)
-  const profiles = trip.memberPreferences || []
-  const completed = travellers.map((traveller) => {
-    const profile = profiles.find((p) => String(p.traveller).toLowerCase() === traveller.toLowerCase())
-    return profile ? { traveller, pace: profile.pace, budget: profile.budget } : { traveller, pace: '', budget: '' }
-  })
-  const ready = completed.filter((p) => PACE_LEVELS.includes(p.pace) && BUDGET_LEVELS.includes(p.budget))
-  const issues = []
-
-  if (ready.length > 1) {
-    const paceValues = ready.map((p) => PACE_LEVELS.indexOf(p.pace))
-    const budgetValues = ready.map((p) => BUDGET_LEVELS.indexOf(p.budget))
-    const paceGap = Math.max(...paceValues) - Math.min(...paceValues)
-    const budgetGap = Math.max(...budgetValues) - Math.min(...budgetValues)
-    if (paceGap >= 2) issues.push({ field: 'pace', level: 'high', message: 'The group mixes relaxed and packed travel styles.' })
-    else if (paceGap === 1) issues.push({ field: 'pace', level: 'medium', message: 'Some travellers prefer a different daily pace.' })
-    if (budgetGap >= 2) issues.push({ field: 'budget', level: 'high', message: 'The group mixes backpacker and luxury budgets.' })
-    else if (budgetGap === 1) issues.push({ field: 'budget', level: 'medium', message: 'The group should agree on a spending range.' })
+// Keep only known keys, no repeats
+function pickKeys(list, allowed) {
+  const out = []
+  if (!Array.isArray(list)) return out
+  for (const k of list) {
+    if (allowed.includes(k) && !out.includes(k)) out.push(k)
   }
-
-  const missing = completed.filter((p) => !p.pace || !p.budget).map((p) => p.traveller)
-  const status = issues.some((i) => i.level === 'high') ? 'mismatch' : missing.length ? 'incomplete' : issues.length ? 'review' : 'aligned'
-  return { status, missing, issues, profiles: completed }
+  return out
 }
 
-function decisionState(trip) {
-  return {
-    candidates: trip.decisions || [],
-    travellers: uniqueTravellers(trip.travellers),
-    quorum: quorumFor(trip),
-    compatibility: compatibilityFor(trip)
+// Clean the packing progress sent by the browser. Returns null if anything is invalid.
+function cleanPacking(p) {
+  if (!p || typeof p !== 'object') return null
+  const id = (v) => String(v || '').slice(0, 60)
+  const checked = {}
+  const qty = {}
+  if (p.checked && typeof p.checked === 'object') {
+    const keys = Object.keys(p.checked).slice(0, 300)
+    for (const k of keys) if (p.checked[k]) checked[id(k)] = true
   }
-}
-
-function cleanCandidate(body) {
-  const name = typeof body.name === 'string' ? body.name.trim() : ''
-  const proposedDate = typeof body.proposedDate === 'string' ? body.proposedDate : ''
-  const proposedHour = Number(body.proposedHour)
-  const duration = Number(body.duration || 2)
-  if (!name || name.length > 120 || !DATE_PATTERN.test(proposedDate)) return null
-  if (!Number.isInteger(proposedHour) || proposedHour < 0 || proposedHour > 23) return null
-  if (!Number.isFinite(duration) || duration <= 0 || duration > 12) return null
-  const safeUrl = typeof body.url === 'string' && /^https?:\/\//.test(body.url) ? body.url.slice(0, 500) : ''
-  return {
-    id: new mongoose.Types.ObjectId().toString(),
-    name,
-    address: typeof body.address === 'string' ? body.address.trim().slice(0, 200) : '',
-    category: typeof body.category === 'string' ? body.category.trim().slice(0, 60) : 'Activity',
-    source: ['google', 'ticketmaster', 'manual'].includes(body.source) ? body.source : 'manual',
-    externalId: typeof body.externalId === 'string' ? body.externalId.slice(0, 160) : '',
-    url: safeUrl,
-    rating: Number.isFinite(Number(body.rating)) ? Number(body.rating) : null,
-    priceLevel: typeof body.priceLevel === 'string' ? body.priceLevel.slice(0, 40) : '',
-    proposedDate,
-    proposedHour,
-    duration,
-    outdoor: !!body.outdoor,
-    votes: [],
-    status: 'open',
-    createdAt: new Date().toISOString()
+  if (p.qty && typeof p.qty === 'object') {
+    const keys = Object.keys(p.qty).slice(0, 300)
+    for (const k of keys) {
+      const n = Math.floor(Number(p.qty[k]))
+      if (n >= 0 && n <= 99) qty[id(k)] = n
+    }
   }
+  const removed = Array.isArray(p.removed) ? p.removed.slice(0, 300).map(id) : []
+  const custom = []
+  if (Array.isArray(p.custom)) {
+    for (const c of p.custom.slice(0, 100)) {
+      const name = c && typeof c.name === 'string' ? c.name.trim().slice(0, 80) : ''
+      if (!name) return null
+      const category = PACKING_CATEGORIES.includes(c.category) ? c.category : 'other'
+      const n = Math.min(99, Math.max(1, Math.floor(Number(c.qty) || 1)))
+      custom.push({ id: id(c.id), category, name, qty: n })
+    }
+  }
+  return { checked, qty, removed, custom }
 }
 
-function toClient(t) {
+// Food needs + WhatsApp from each member's Settings: { userId: { diet, phone } }
+async function memberContacts(trip) {
+  const ids = []
+  for (const m of trip.members || []) ids.push(m.user)
+  const users = await User.find({ _id: { $in: ids } }, 'diet phone contactSaved')
+  const map = {}
+  for (const u of users) map[String(u._id)] = { diet: u.diet || [], phone: u.phone || '', saved: !!u.contactSaved }
+  return map
+}
+
+function toClient(t, userId, contacts) {
   return {
+    role: userId ? roleOf(t, userId) : null,   // 'owner' | 'member'
+    isOwner: userId ? String(t.owner) === String(userId) : false,
+    group: t.group || null,                    // family group it's shared with (or null)
+    version: t.version || 0,                   // itinerary version (see PUT /:id/itinerary)
+    me: userId ? memberName(t, userId) : null, // my traveller name on this trip
+    members: (t.members || []).map((m) => {
+      const c = contacts ? contacts[String(m.user)] : null
+      return { id: m.user, name: m.name, role: m.role, joinedAt: m.joinedAt, lastSeenAt: m.lastSeenAt || null, viewing: m.viewing || '', diet: c ? c.diet : null, phone: c ? c.phone : null, contactSaved: c ? c.saved : false }
+    }),
+    crew: t.crew || {},
+    // Only filled in when the users were looked up (populate), e.g. on GET /api/trips/:id
+    pendingInvites: (t.pendingInvites || []).map((p) => ({
+      id: p.user && p.user._id ? p.user._id : p.user,
+      name: p.user && p.user.name ? p.user.name : '',
+      username: p.user && p.user.username ? p.user.username : '',
+      invitedBy: p.invitedBy,
+      invitedById: p.invitedById
+    })),
     id: t._id,
     name: t.name,
     destination: t.destination,
+    // Older trips only have one destination
+    destinations: t.destinations && t.destinations.length ? t.destinations : [t.destination],
     startDate: t.startDate,
     endDate: t.endDate,
     travellers: t.travellers,
+    activities: t.activities || [],
+    weather: t.weather || [],
+    extras: t.extras || [],
+    packing: t.packing || null,
+    expenses: t.expenses || null,
+    photoAlbums: t.photoAlbums || [],
+    stay: t.stay || null,
     stops: t.stops || [],
-    wishlist: t.wishlist || [],
-    decisions: t.decisions || [],
-    memberPreferences: t.memberPreferences || []
+    wishlist: t.wishlist || []
   }
 }
 
@@ -129,28 +134,61 @@ function cleanStops(list) {
 }
 
 function cleanWishlist(list) {
-  if (!Array.isArray(list) || list.length > 30) return null
+  if (!Array.isArray(list) || list.length > 100) return null
   const out = []
   for (const w of list) {
     if (!w || typeof w !== 'object') return null
     const name = typeof w.name === 'string' ? w.name.trim() : ''
     if (!name || name.length > 120) return null
     const address = typeof w.address === 'string' && w.address.trim() ? w.address.trim().slice(0, 200) : null
-    out.push({ id: String(w.id || new mongoose.Types.ObjectId()).slice(0, 40), name, address })
+    const type = typeof w.type === 'string' ? w.type.slice(0, 20) : null
+    const city = typeof w.city === 'string' && w.city.trim() ? w.city.trim().slice(0, 80) : null // e.g. 'Kyoto, Japan'
+    // votes = names of the travellers who want to go, e.g. ['Sarah', 'Amy']
+    const votes = []
+    if (Array.isArray(w.votes)) {
+      for (const v of w.votes.slice(0, 20)) {
+        const voter = String(v).trim().slice(0, 40)
+        if (voter && !votes.includes(voter)) votes.push(voter)
+      }
+    }
+    // Tours and activities added by hand: how long, where it was booked, and the booking link
+    let duration = Number(w.duration)
+    if (!Number.isFinite(duration) || duration <= 0 || duration > 24) duration = null
+    const bookedVia = typeof w.bookedVia === 'string' && w.bookedVia.trim() ? w.bookedVia.trim().slice(0, 40) : null
+    const link = typeof w.link === 'string' && /^https?:\/\//i.test(w.link.trim()) ? w.link.trim().slice(0, 500) : null
+    out.push({ id: String(w.id || new mongoose.Types.ObjectId()).slice(0, 40), name, address, outdoor: !!w.outdoor, type, city, votes, duration, bookedVia, link })
   }
   return out
 }
 
 // GET /api/trips -> the logged-in user's trips, newest first
 router.get('/', requireAuth, async (req, res) => {
-  const trips = await Trip.find({ owner: req.userId }).sort({ createdAt: -1 })
-  res.json(trips.map(toClient))
+  // My trips, trips I joined, and trips shared with my family groups
+  const trips = await Trip.find(await accessQuery(req.userId)).sort({ createdAt: -1 })
+  for (const t of trips) {
+    await ensureMembers(t)
+    await addGroupMember(t, req.userId)
+  }
+  res.json(trips.map((t) => toClient(t, req.userId)))
 })
 
-// POST /api/trips  { name, destination, startDate?, endDate?, travellers? }
+// POST /api/trips  { name, destinations: ['Kyoto, Japan', 'Osaka, Japan'], startDate?, endDate?, travellers? }
+// (a single { destination } still works)
 router.post('/', requireAuth, async (req, res) => {
   const name = (req.body.name || '').trim()
-  const destination = (req.body.destination || '').trim()
+
+  // Build the destinations list: trimmed, no blanks, no repeats, max 10
+  const raw = Array.isArray(req.body.destinations) ? req.body.destinations : [req.body.destination]
+  const destinations = []
+  for (const d of raw) {
+    const clean = String(d || '').trim()
+    if (clean && !destinations.includes(clean)) destinations.push(clean)
+  }
+  if (destinations.length > 10) return res.status(400).json({ message: 'A trip can have up to 10 destinations.' })
+  for (const d of destinations) {
+    if (d.length > 80) return res.status(400).json({ message: 'Each destination must be 80 characters or fewer.' })
+  }
+  const destination = destinations[0] || ''
   const startDate = req.body.startDate || ''
   const endDate = req.body.endDate || ''
 
@@ -165,224 +203,341 @@ router.post('/', requireAuth, async (req, res) => {
 
   let travellers = Array.isArray(req.body.travellers) ? req.body.travellers : []
   travellers = travellers.map((n) => String(n).trim()).filter(Boolean).slice(0, 10)
-  if (!travellers.length) {
-    const user = await User.findById(req.userId)
-    if (user) travellers = [user.name] // default: just the creator
+  // The creator is a traveller too: use their name from the list if it's there, otherwise add it first
+  const user = await User.findById(req.userId)
+  let myName = user ? user.name : 'Organiser'
+  for (const t of travellers) {
+    if (t.toLowerCase() === myName.toLowerCase()) myName = t
+  }
+  if (!travellers.includes(myName)) travellers.unshift(myName)
+  const members = [{ user: req.userId, name: myName, role: 'owner' }]
+
+  // Sharing with a family group: only allowed if I am in it. Its members can then open the trip.
+  let groupId = null
+  if (req.body.group) {
+    if (!mongoose.isValidObjectId(req.body.group)) return res.status(400).json({ message: 'That group is not valid.' })
+    const group = await Group.findOne({ _id: req.body.group, members: req.userId })
+    if (!group) return res.status(403).json({ message: 'You are not a member of that group.' })
+    groupId = group._id
   }
 
-  const trip = await Trip.create({ owner: req.userId, name, destination, startDate, endDate, travellers })
-  res.status(201).json(toClient(trip))
-})
+  const activities = pickKeys(req.body.activities, ACTIVITY_KEYS)
+  const weather = pickKeys(req.body.weather, WEATHER_KEYS)
+  const extras = pickKeys(req.body.extras, EXTRA_KEYS)
 
-// GET /api/trips/discover?source=places|events&destination=...&query=...
-// API keys stay on the server and are never sent to the browser.
-router.get('/discover', requireAuth, async (req, res) => {
-  const source = req.query.source === 'events' ? 'events' : 'places'
-  const destination = String(req.query.destination || '').trim().slice(0, 100)
-  const query = String(req.query.query || '').trim().slice(0, 100)
-  if (!destination || !query) return res.status(400).json({ message: 'Destination and search words are required.' })
+  // Expenses start in the organiser's base currency (Settings)
+  const owner = await User.findById(req.userId, 'settings')
+  const homeCurrency = (owner && owner.settings && owner.settings.currency) || 'SGD'
+  const expenses = { homeCurrency, budget: null, items: [], settlements: [] }
 
-  try {
-    if (source === 'places') {
-      if (!process.env.GOOGLE_MAPS_API_KEY) {
-        return res.status(503).json({ message: 'Add GOOGLE_MAPS_API_KEY to server/.env to search places.' })
-      }
-      const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': process.env.GOOGLE_MAPS_API_KEY,
-          'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.primaryTypeDisplayName,places.rating,places.priceLevel,places.googleMapsUri'
-        },
-        body: JSON.stringify({ textQuery: `${query} in ${destination}`, pageSize: 8 }),
-        signal: AbortSignal.timeout(10000)
-      })
-      if (!response.ok) {
-        console.error('Places search error:', response.status, (await response.text()).slice(0, 500))
-        return res.status(502).json({ message: 'Google Places search failed. Check that Places API (New) is enabled.' })
-      }
-      const data = await response.json()
-      const candidates = (data.places || []).map((place) => ({
-        externalId: place.id,
-        name: place.displayName && place.displayName.text,
-        address: place.formattedAddress || '',
-        category: (place.primaryTypeDisplayName && place.primaryTypeDisplayName.text) || 'Place',
-        rating: place.rating || null,
-        priceLevel: place.priceLevel ? place.priceLevel.replace('PRICE_LEVEL_', '').toLowerCase() : '',
-        url: place.googleMapsUri || '',
-        source: 'google'
-      })).filter((item) => item.name)
-      return res.json({ candidates })
-    }
-
-    if (!process.env.TICKETMASTER_API_KEY) {
-      return res.status(503).json({ message: 'Add TICKETMASTER_API_KEY to server/.env to search events.' })
-    }
-    const params = new URLSearchParams({
-      apikey: process.env.TICKETMASTER_API_KEY,
-      city: destination.split(',')[0].trim(),
-      keyword: query,
-      size: '8',
-      sort: 'date,asc'
-    })
-    const response = await fetch(`https://app.ticketmaster.com/discovery/v2/events.json?${params}`, {
-      signal: AbortSignal.timeout(10000)
-    })
-    if (!response.ok) {
-      console.error('Ticketmaster search error:', response.status)
-      return res.status(502).json({ message: 'Ticketmaster event search failed. Check the configured API key.' })
-    }
-    const data = await response.json()
-    const events = (data._embedded && data._embedded.events) || []
-    const candidates = events.map((event) => {
-      const venue = event._embedded && event._embedded.venues && event._embedded.venues[0]
-      const classification = event.classifications && event.classifications[0]
-      return {
-        externalId: event.id,
-        name: event.name,
-        address: venue ? [venue.name, venue.address && venue.address.line1].filter(Boolean).join(', ') : '',
-        category: (classification && classification.segment && classification.segment.name) || 'Event',
-        url: event.url || '',
-        source: 'ticketmaster',
-        suggestedDate: event.dates && event.dates.start && event.dates.start.localDate,
-        suggestedHour: Number((event.dates && event.dates.start && event.dates.start.localTime || '10:00').slice(0, 2))
-      }
-    })
-    res.json({ candidates })
-  } catch (err) {
-    console.error('Candidate search error:', err.message)
-    res.status(502).json({ message: 'The suggestion service did not respond in time.' })
-  }
+  const trip = await Trip.create({ owner: req.userId, members, group: groupId, name, destination, destinations, startDate, endDate, travellers, activities, weather, extras, expenses })
+  res.status(201).json(toClient(trip, req.userId))
 })
 
 // GET /api/trips/:id
 router.get('/:id', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
+  const trip = await findTripFor(req.userId, req.params.id)
   if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  res.json(toClient(trip))
+  await trip.populate('pendingInvites.user', 'name username')
+  res.json(toClient(trip, req.userId, await memberContacts(trip)))
 })
 
-// GET /api/trips/:id/decisions
-router.get('/:id/decisions', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
+// POST /api/trips/:id/presence  { viewing: 'Day 2' }  -> the crew list (with who is online)
+// The open trip page sends this every 30 seconds, so the crew drawer can show "Active now · Viewing Day 2".
+router.post('/:id/presence', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
   if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  res.json(decisionState(trip))
-})
-
-// POST /api/trips/:id/decisions - add a place/event/manual idea to the ballot
-router.post('/:id/decisions', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
-  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  const candidate = cleanCandidate(req.body)
-  if (!candidate) return res.status(400).json({ message: 'Add a name, valid date, start hour and duration.' })
-  if (trip.startDate && candidate.proposedDate < trip.startDate) return res.status(400).json({ message: 'The proposed date is before the trip starts.' })
-  if (trip.endDate && candidate.proposedDate > trip.endDate) return res.status(400).json({ message: 'The proposed date is after the trip ends.' })
-  if ((trip.decisions || []).length >= 40) return res.status(400).json({ message: 'This trip already has 40 decision candidates.' })
-  const duplicate = (trip.decisions || []).some((d) => candidate.externalId && d.source === candidate.source && d.externalId === candidate.externalId)
-  if (duplicate) return res.status(409).json({ message: 'That option is already on the ballot.' })
-  trip.decisions.push(candidate)
-  trip.markModified('decisions')
-  await trip.save()
-  res.status(201).json(decisionState(trip))
-})
-
-// PUT /api/trips/:id/decisions/:decisionId/vote { traveller, vote: yes|no|clear }
-router.put('/:id/decisions/:decisionId/vote', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
-  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  const candidate = (trip.decisions || []).find((d) => d.id === req.params.decisionId)
-  if (!candidate) return res.status(404).json({ message: 'Decision candidate not found.' })
-  if (candidate.status === 'scheduled') return res.status(409).json({ message: 'This option already reached quorum and is locked into the itinerary.' })
-
-  const traveller = uniqueTravellers(trip.travellers).find((name) => name.toLowerCase() === String(req.body.traveller || '').trim().toLowerCase())
-  const vote = req.body.vote
-  if (!traveller || !['yes', 'no', 'clear'].includes(vote)) return res.status(400).json({ message: 'Choose a traveller and a valid vote.' })
-  candidate.votes = (candidate.votes || []).filter((v) => String(v.traveller).toLowerCase() !== traveller.toLowerCase())
-  if (vote !== 'clear') candidate.votes.push({ traveller, value: vote })
-
-  const yesVotes = new Set(candidate.votes.filter((v) => v.value === 'yes').map((v) => String(v.traveller).toLowerCase())).size
-  let justScheduled = false
-  if (yesVotes >= quorumFor(trip)) {
-    candidate.status = 'scheduled'
-    candidate.scheduledAt = new Date().toISOString()
-    const stopId = `vote-${candidate.id}`
-    if (!(trip.stops || []).some((stop) => stop.id === stopId)) {
-      trip.stops.push({
-        id: stopId,
-        name: candidate.name,
-        address: candidate.address || null,
-        date: candidate.proposedDate,
-        hour: candidate.proposedHour,
-        duration: candidate.duration,
-        outdoor: !!candidate.outdoor,
-        locked: true,
-        sourceDecisionId: candidate.id
-      })
-      justScheduled = true
+  const viewing = String(req.body.viewing || '').replace(/[<>]/g, '').trim().slice(0, 40)
+  const now = new Date()
+  await Trip.updateOne({ _id: trip._id, 'members.user': req.userId }, { $set: { 'members.$.lastSeenAt': now, 'members.$.viewing': viewing } })
+  for (const m of trip.members) {
+    if (String(m.user) === String(req.userId)) {
+      m.lastSeenAt = now
+      m.viewing = viewing
     }
   }
-  trip.markModified('decisions')
-  trip.markModified('stops')
-  await trip.save()
-  res.json({ ...decisionState(trip), justScheduled, itinerary: trip.stops })
+  const t = toClient(trip, req.userId, await memberContacts(trip))
+  res.json({ members: t.members, travellers: t.travellers, me: t.me, role: t.role })
 })
 
-// DELETE /api/trips/:id/decisions/:decisionId - remove an open candidate
-router.delete('/:id/decisions/:decisionId', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
-  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  const candidate = (trip.decisions || []).find((d) => d.id === req.params.decisionId)
-  if (!candidate) return res.status(404).json({ message: 'Decision candidate not found.' })
-  if (candidate.status === 'scheduled') return res.status(409).json({ message: 'Scheduled decisions cannot be removed from the ballot.' })
-  trip.decisions = trip.decisions.filter((d) => d.id !== req.params.decisionId)
-  trip.markModified('decisions')
-  await trip.save()
-  res.json(decisionState(trip))
-})
-
-// PUT /api/trips/:id/compatibility { traveller, pace, budget }
-router.put('/:id/compatibility', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
-  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  const traveller = uniqueTravellers(trip.travellers).find((name) => name.toLowerCase() === String(req.body.traveller || '').trim().toLowerCase())
-  if (!traveller || !PACE_LEVELS.includes(req.body.pace) || !BUDGET_LEVELS.includes(req.body.budget)) {
-    return res.status(400).json({ message: 'Choose a valid traveller, pace and budget.' })
-  }
-  trip.memberPreferences = (trip.memberPreferences || []).filter((p) => String(p.traveller).toLowerCase() !== traveller.toLowerCase())
-  trip.memberPreferences.push({ traveller, pace: req.body.pace, budget: req.body.budget })
-  trip.markModified('memberPreferences')
-  await trip.save()
-  res.json(decisionState(trip))
-})
-
-// PUT /api/trips/:id/itinerary  { stops: [...], wishlist: [...] }
+// PUT /api/trips/:id/itinerary  { stops: [...], wishlist: [...], version? }
+// "version" is the version the browser last saw. If someone else saved in between, the numbers
+// no longer match and we answer 409 with the latest trip instead of overwriting it (Gladys's idea).
+// Without a version (older pages) it just saves.
 router.put('/:id/itinerary', requireAuth, async (req, res) => {
-  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
   const stops = cleanStops(req.body.stops)
   const wishlist = cleanWishlist(req.body.wishlist)
   if (!stops || !wishlist) return res.status(400).json({ message: 'Some itinerary details are invalid.' })
 
-  const trip = await Trip.findOne({ _id: req.params.id, owner: req.userId })
+  const trip = await findTripFor(req.userId, req.params.id)
   if (!trip) return res.status(404).json({ message: 'Trip not found.' })
-  trip.stops = stops
-  trip.wishlist = wishlist
-  trip.markModified('stops')
-  trip.markModified('wishlist')
+
+  // Votes: you can only change your own (the organiser also for people without an account).
+  // Everyone else's votes are kept exactly as they are saved.
+  const me = memberName(trip, req.userId)
+  const allowed = [me]
+  if (roleOf(trip, req.userId) === 'owner') {
+    for (const t of trip.travellers) {
+      if (!trip.members.some((m) => m.name === t)) allowed.push(t)
+    }
+  }
+  for (const w of wishlist) {
+    const before = (trip.wishlist || []).find((x) => x.id === w.id)
+    const kept = before && Array.isArray(before.votes) ? before.votes.filter((v) => !allowed.includes(v)) : []
+    const mine = w.votes.filter((v) => allowed.includes(v))
+    w.votes = kept.concat(mine)
+  }
+
+  const filter = { _id: trip._id }
+  if (req.body.version !== undefined && req.body.version !== null) {
+    const sent = Number(req.body.version)
+    if (!Number.isInteger(sent) || sent < 0) return res.status(400).json({ message: 'Invalid trip version. Please refresh the page.' })
+    // Trips saved before versions existed have none, so 0 also matches "missing"
+    filter.version = sent === 0 ? { $in: [0, null] } : sent
+  }
+
+  // One atomic step: save only if the version still matches, and add 1 to it
+  const updated = await Trip.findOneAndUpdate(filter, { $set: { stops, wishlist }, $inc: { version: 1 } }, { new: true })
+  if (!updated) {
+    const latest = await Trip.findById(trip._id)
+    return res.status(409).json({ message: 'Someone else changed this trip. Showing their latest version.', trip: toClient(latest, req.userId) })
+  }
+  res.json({ ok: true, version: updated.version })
+})
+
+// PUT /api/trips/:id/dates  { endDate }  -> the planner's "+ Add Day" (anyone on the trip)
+router.put('/:id/dates', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const endDate = String(req.body.endDate || '')
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate) || (trip.startDate && endDate < trip.startDate)) {
+    return res.status(400).json({ message: 'Invalid end date.' })
+  }
+  trip.endDate = endDate
+  await trip.save()
+  res.json({ startDate: trip.startDate, endDate: trip.endDate })
+})
+
+// PUT /api/trips/:id/packing  { activities, weather, extras, packing: { checked, qty, removed, custom } }
+router.put('/:id/packing', requireAuth, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
+  const packing = cleanPacking(req.body.packing)
+  if (!packing) return res.status(400).json({ message: 'Some packing details are invalid.' })
+
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  trip.activities = pickKeys(req.body.activities, ACTIVITY_KEYS)
+  trip.weather = pickKeys(req.body.weather, WEATHER_KEYS)
+  trip.extras = pickKeys(req.body.extras, EXTRA_KEYS)
+  trip.packing = packing
+  trip.markModified('packing')
   await trip.save()
   res.json({ ok: true })
 })
 
-// DELETE /api/trips/:id
+// PUT /api/trips/:id/albums  [{ id, name, icon }]  -> the trip's photo albums
+router.put('/:id/albums', requireAuth, async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id) || !Array.isArray(req.body) || req.body.length > 50) {
+    return res.status(400).json({ message: 'Albums are invalid.' })
+  }
+  const albums = []
+  for (const a of req.body) {
+    const name = a && typeof a.name === 'string' ? a.name.trim().slice(0, 60) : ''
+    if (!name) return res.status(400).json({ message: 'Every album needs a name.' })
+    albums.push({ id: String(a.id || new mongoose.Types.ObjectId()).slice(0, 40), name, icon: String(a.icon || '📍').slice(0, 8) })
+  }
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  trip.photoAlbums = albums
+  trip.markModified('photoAlbums')
+  await trip.save()
+  // Photos in a deleted album go back to Trip highlights
+  const ids = albums.map((a) => a.id)
+  await Photo.updateMany({ trip: trip._id, album: { $nin: ids.concat('') } }, { album: '' })
+  res.json({ ok: true })
+})
+
+// PUT /api/trips/:id/stay  { name, address, nameLocal, addressLocal, lat, lon } or {} to clear
+router.put('/:id/stay', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const b = req.body || {}
+  const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+  const name = text(b.name, 120)
+  if (!name) {
+    trip.stay = null
+  } else {
+    const lat = Number(b.lat)
+    const lon = Number(b.lon)
+    trip.stay = {
+      name,
+      address: text(b.address, 200),
+      nameLocal: text(b.nameLocal, 120),
+      addressLocal: text(b.addressLocal, 200),
+      lat: Number.isFinite(lat) && Math.abs(lat) <= 90 ? lat : null,
+      lon: Number.isFinite(lon) && Math.abs(lon) <= 180 ? lon : null
+    }
+  }
+  trip.markModified('stay')
+  await trip.save()
+  res.json({ stay: trip.stay })
+})
+
+// PUT /api/trips/:id/crew/:name  { persona, flight, arrival, sameFlightAs, diet, phone }
+// Your own card, or (organiser only) the card of someone without an account.
+// diet: preset keys (e.g. 'halal', 'nut-allergy') or short custom tags (e.g. 'No spicy food').
+// sameFlightAs: another traveller's name. Their flight is shown instead, so it is only stored once.
+router.put('/:id/crew/:name', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const name = req.params.name
+  if (!trip.travellers.includes(name)) return res.status(404).json({ message: 'That person is not on this trip.' })
+  const isMe = memberName(trip, req.userId) === name
+  const isGuest = !trip.members.some((m) => m.name === name)
+  if (!isMe && !(isGuest && roleOf(trip, req.userId) === 'owner')) {
+    return res.status(403).json({ message: 'You can only edit your own details.' })
+  }
+  const b = req.body || {}
+  const text = (v, max) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+
+  const diet = []
+  if (Array.isArray(b.diet)) {
+    for (const d of b.diet) {
+      const tag = text(d, 30)
+      if (tag && !diet.includes(tag) && diet.length < 8) diet.push(tag)
+    }
+  }
+
+  let sameFlightAs = text(b.sameFlightAs, 60)
+  if (sameFlightAs === name || !trip.travellers.includes(sameFlightAs)) sameFlightAs = ''
+
+  const arrival = text(b.arrival, 16)
+  const profile = {
+    persona: text(b.persona, 40),
+    sameFlightAs,
+    flight: sameFlightAs ? '' : text(b.flight, 12).toUpperCase(),
+    arrival: !sameFlightAs && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(arrival) ? arrival : '',
+    diet,
+    phone: text(b.phone, 20).replace(/[^\d+ ]/g, '')
+  }
+  trip.crew = { ...(trip.crew || {}), [name]: profile }
+  trip.markModified('crew')
+  await trip.save()
+  res.json({ crew: trip.crew })
+})
+
+// POST /api/trips/:id/invites/:userId/resend  -> moves the invite back to the top of their home page
+router.post('/:id/invites/:userId/resend', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const invite = trip.pendingInvites.find((p) => String(p.user) === String(req.params.userId))
+  if (!invite) return res.status(404).json({ message: 'That invite was already answered.' })
+  invite.at = new Date()
+  trip.markModified('pendingInvites')
+  await trip.save()
+  res.json({ ok: true })
+})
+
+// ---------- Sharing ----------
+
+// POST /api/trips/:id/invite  -> { code }  (any member can share the link; reset=true makes a new one, owner only)
+router.post('/:id/invite', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  if (req.body.reset && roleOf(trip, req.userId) !== 'owner') return res.status(403).json({ message: 'Only the organiser can reset the link.' })
+  if (!trip.inviteCode || req.body.reset) {
+    trip.inviteCode = newInviteCode()
+    await trip.save()
+  }
+  res.json({ code: trip.inviteCode })
+})
+
+// POST /api/trips/:id/invites  { userId }  -> invite an account by username (any member can)
+router.post('/:id/invites', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const userId = String(req.body.userId || '')
+  if (!mongoose.isValidObjectId(userId)) return res.status(400).json({ message: 'Pick someone to invite.' })
+  const user = await User.findById(userId)
+  if (!user) return res.status(404).json({ message: 'That account does not exist.' })
+  if (memberName(trip, userId)) return res.status(400).json({ message: user.name + ' is already on this trip.' })
+  if (trip.pendingInvites.some((p) => String(p.user) === userId)) return res.status(400).json({ message: user.name + ' is already invited.' })
+  if (trip.pendingInvites.length >= 30) return res.status(400).json({ message: 'Too many invites waiting. Cancel some first.' })
+  trip.pendingInvites.push({ user: userId, invitedBy: memberName(trip, req.userId), invitedById: req.userId })
+  // The invite card opens the join page, which needs a code
+  if (!trip.inviteCode) trip.inviteCode = newInviteCode()
+  await trip.save()
+  await trip.populate('pendingInvites.user', 'name username')
+  res.status(201).json(toClient(trip, req.userId).pendingInvites)
+})
+
+// DELETE /api/trips/:id/invites/:userId  -> cancel (the organiser, or whoever sent it)
+router.delete('/:id/invites/:userId', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const invite = trip.pendingInvites.find((p) => String(p.user) === String(req.params.userId))
+  if (!invite) return res.status(404).json({ message: 'That invite was already answered.' })
+  if (roleOf(trip, req.userId) !== 'owner' && String(invite.invitedById) !== String(req.userId)) {
+    return res.status(403).json({ message: 'Only the organiser or whoever sent it can cancel this invite.' })
+  }
+  trip.pendingInvites = trip.pendingInvites.filter((p) => p !== invite)
+  await trip.save()
+  await trip.populate('pendingInvites.user', 'name username')
+  res.json(toClient(trip, req.userId).pendingInvites)
+})
+
+// POST /api/trips/:id/guests  { name }  -> someone going who won't make an account (kids, parents...)
+router.post('/:id/guests', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const name = String(req.body.name || '').trim().slice(0, 40)
+  if (!name) return res.status(400).json({ message: 'Type their name.' })
+  if (trip.travellers.some((t) => t.toLowerCase() === name.toLowerCase())) return res.status(400).json({ message: name + ' is already on this trip.' })
+  if (trip.travellers.length >= 20) return res.status(400).json({ message: 'A trip can have up to 20 people.' })
+  trip.travellers.push(name)
+  await trip.save()
+  res.status(201).json({ travellers: trip.travellers })
+})
+
+// DELETE /api/trips/:id/guests/:name  -> only names without an account, and not used in any expense
+router.delete('/:id/guests/:name', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const name = req.params.name
+  if (trip.members.some((m) => m.name === name)) return res.status(400).json({ message: name + ' has an account. Remove them as a member instead.' })
+  const e = trip.expenses || {}
+  let used = false
+  for (const x of e.items || []) {
+    if (x.paidBy === name || (x.people || []).includes(name) || (x.exact && x.exact[name])) used = true
+  }
+  for (const p of e.settlements || []) {
+    if (p.from === name || p.to === name) used = true
+  }
+  if (used) return res.status(400).json({ message: name + ' is in some expenses, so they can\'t be removed.' })
+  trip.travellers = trip.travellers.filter((t) => t !== name)
+  await trip.save()
+  res.json({ travellers: trip.travellers })
+})
+
+// DELETE /api/trips/:id/members/:userId  -> the owner removes someone, or you leave
+// Their traveller name stays on the trip (as a guest) so past expenses still add up.
+router.delete('/:id/members/:userId', requireAuth, async (req, res) => {
+  const trip = await findTripFor(req.userId, req.params.id)
+  if (!trip) return res.status(404).json({ message: 'Trip not found.' })
+  const leaving = String(req.params.userId) === String(req.userId)
+  if (!leaving && roleOf(trip, req.userId) !== 'owner') return res.status(403).json({ message: 'Only the organiser can remove people.' })
+  if (String(req.params.userId) === String(trip.owner)) return res.status(400).json({ message: 'The organiser cannot leave their own trip.' })
+  trip.members = trip.members.filter((m) => String(m.user) !== String(req.params.userId))
+  await trip.save()
+  res.json({ ok: true })
+})
+
+// DELETE /api/trips/:id  (its photos too)
 router.delete('/:id', requireAuth, async (req, res) => {
   if (!mongoose.isValidObjectId(req.params.id)) return res.status(404).json({ message: 'Trip not found.' })
   const result = await Trip.deleteOne({ _id: req.params.id, owner: req.userId })
   if (!result.deletedCount) return res.status(404).json({ message: 'Trip not found.' })
+  await Photo.deleteMany({ trip: req.params.id })
   res.json({ ok: true })
 })
 

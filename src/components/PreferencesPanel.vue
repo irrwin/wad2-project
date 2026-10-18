@@ -1,5 +1,6 @@
 <template>
-  <!-- "Trip preferences" card. Edits a copy, then saves to MongoDB via /api/preferences. -->
+  <!-- "Trip preferences" card. Every change applies straight away (the itinerary re-times itself)
+       and is saved to MongoDB via /api/preferences a moment later. -->
   <div class="card mb-3" data-testid="prefs-panel">
     <button type="button" class="btn btn-link text-start text-decoration-none p-3 d-flex justify-content-between align-items-center"
       :aria-expanded="open" @click="toggle" data-testid="prefs-toggle">
@@ -10,46 +11,29 @@
       <span aria-hidden="true">{{ open ? '▲' : '▼' }}</span>
     </button>
 
-    <form v-if="open" class="px-3 pb-3" @submit.prevent="save" novalidate>
+    <form v-if="open" class="px-3 pb-3" @submit.prevent novalidate>
       <div class="row g-3">
         <div class="col-6 col-md-3">
           <label for="pref-start" class="form-label small">Day starts</label>
-          <select id="pref-start" v-model.number="form.dayStart" class="form-select form-select-sm" data-testid="prefs-day-start">
-            <option v-for="h in startHours" :key="h" :value="h">{{ formatHour(h) }}</option>
-          </select>
+          <CustomDropdown id="pref-start" v-model="form.dayStart" :options="startChoices" size="sm" block header-text="Day starts" testid="prefs-day-start" />
         </div>
         <div class="col-6 col-md-3">
           <label for="pref-end" class="form-label small">Day ends</label>
-          <select id="pref-end" v-model.number="form.dayEnd" class="form-select form-select-sm" data-testid="prefs-day-end">
-            <option v-for="h in endHours" :key="h" :value="h">{{ h === 24 ? 'Midnight' : formatHour(h) }}</option>
-          </select>
+          <CustomDropdown id="pref-end" v-model="form.dayEnd" :options="endChoices" size="sm" block header-text="Day ends" testid="prefs-day-end" />
         </div>
         <div class="col-6 col-md-3">
           <label for="pref-crowd" class="form-label small">Crowds bother me</label>
-          <select id="pref-crowd" v-model="form.crowdSensitivity" class="form-select form-select-sm" data-testid="prefs-crowd">
-            <option value="low">A little</option>
-            <option value="medium">Somewhat</option>
-            <option value="high">A lot</option>
-          </select>
+          <CustomDropdown id="pref-crowd" v-model="form.crowdSensitivity" :options="crowdChoices" size="sm" block header-text="Crowds bother me" testid="prefs-crowd" />
         </div>
         <div class="col-6 col-md-3">
           <label for="pref-buffer" class="form-label small">Travel buffer</label>
-          <select id="pref-buffer" v-model.number="form.travelBuffer" class="form-select form-select-sm" data-testid="prefs-buffer">
-            <option :value="0">None</option>
-            <option :value="0.5">30 min</option>
-            <option :value="1">1 hour</option>
-          </select>
+          <CustomDropdown id="pref-buffer" v-model="form.travelBuffer" :options="bufferChoices" size="sm" block header-text="Travel buffer" testid="prefs-buffer" />
         </div>
       </div>
 
-      <div class="d-flex align-items-center gap-2 mt-3">
-        <button type="submit" class="btn btn-primary btn-sm" :disabled="saving" data-testid="prefs-save">
-          {{ saving ? 'Saving…' : 'Save' }}
-        </button>
-        <span v-if="message" class="small" :class="isError ? 'text-danger' : 'text-success'" role="status" data-testid="prefs-message">
-          {{ message }}
-        </span>
-      </div>
+      <p v-if="message" class="small mt-2 mb-0" :class="isError ? 'text-danger' : 'text-success'" role="status" data-testid="prefs-message">
+        {{ message }}
+      </p>
     </form>
   </div>
 </template>
@@ -57,23 +41,57 @@
 <script>
 import { prefs, savePreferences } from '../preferences.js'
 import { formatHour } from '../crowd.js'
+import CustomDropdown from './CustomDropdown.vue'
 
 export default {
+  components: { CustomDropdown },
   data() {
     // Build the hour lists up front
-    const startHours = []
-    for (let h = 5; h <= 12; h++) startHours.push(h)
-    const endHours = []
-    for (let h = 17; h <= 24; h++) endHours.push(h)
+    const startChoices = []
+    for (let h = 5; h <= 12; h++) startChoices.push({ value: h, label: formatHour(h) })
+    const endChoices = []
+    for (let h = 17; h <= 24; h++) endChoices.push({ value: h, label: h === 24 ? 'Midnight' : formatHour(h) })
 
     return {
       open: false,
-      form: { ...prefs }, // a copy, so nothing changes until Save
-      startHours,
-      endHours,
+      form: { ...prefs }, // what's picked in the dropdowns
+      startChoices,
+      endChoices,
+      crowdChoices: [
+        { value: 'low', label: 'A little', icon: '🙂' },
+        { value: 'medium', label: 'Somewhat', icon: '😐' },
+        { value: 'high', label: 'A lot', icon: '😣', description: 'Avoid busy times where possible' }
+      ],
+      bufferChoices: [
+        { value: 0, label: 'None' },
+        { value: 0.5, label: '30 min' },
+        { value: 1, label: '1 hour' }
+      ],
       saving: false,
+      saveTimer: null,
       message: '',
       isError: false
+    }
+  },
+  watch: {
+    // Any change: apply it now, save it shortly after (so quick changes are one save)
+    form: {
+      deep: true,
+      handler() {
+        if (!this.open) return
+        let changed = false
+        for (const key in this.form) if (this.form[key] !== prefs[key]) changed = true
+        if (!changed) return // just opened, nothing picked yet
+        this.message = ''
+        if (this.form.dayEnd - this.form.dayStart < 4) {
+          this.isError = true
+          this.message = 'Your day needs to be at least 4 hours long.'
+          return
+        }
+        Object.assign(prefs, this.form) // the itinerary re-times itself straight away
+        clearTimeout(this.saveTimer)
+        this.saveTimer = setTimeout(this.save, 600)
+      }
     }
   },
   computed: {
@@ -91,17 +109,11 @@ export default {
       this.message = ''
     },
     async save() {
-      this.message = ''
-      if (this.form.dayEnd - this.form.dayStart < 4) {
-        this.isError = true
-        this.message = 'Your day needs to be at least 4 hours long.'
-        return
-      }
       this.saving = true
       try {
         await savePreferences(this.form)
         this.isError = false
-        this.message = 'Saved'
+        this.message = '✓ Saved · your itinerary has been updated'
       } catch (err) {
         this.isError = true
         this.message = (err.response && err.response.data && err.response.data.message) || 'Could not save. Is the server running?'

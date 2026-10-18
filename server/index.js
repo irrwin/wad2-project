@@ -10,6 +10,18 @@ import tripRoutes from './routes/trips.js'
 import weatherRoutes from './routes/weather.js'
 import distanceRoutes from './routes/distance.js'
 import flightRoutes from './routes/flights.js'
+import placeRoutes from './routes/places.js'
+import rateRoutes from './routes/rates.js'
+import photoRoutes from './routes/photos.js'
+import expenseRoutes from './routes/expenses.js'
+import joinRoutes from './routes/join.js'
+import inviteRoutes from './routes/invites.js'
+import friendRoutes from './routes/friends.js'
+import safetyRoutes from './routes/safety.js'
+import groupRoutes from './routes/groups.js'
+import mapRoutes from './routes/maps.js'
+import eatRoutes from './routes/eat.js'
+import discoverRoutes from './routes/discover.js'
 import User from './models/User.js'
 
 const app = express()
@@ -20,10 +32,22 @@ app.use(express.json())
 app.use('/api/auth', authRoutes)
 app.use('/api/crowd', crowdRoutes)
 app.use('/api/preferences', preferenceRoutes)
+app.use('/api/trips/:tripId/photos', photoRoutes) // before trips, so /photos is not read as a trip id
+app.use('/api/trips/:tripId/expenses', expenseRoutes)
+app.use('/api/join', joinRoutes)
+app.use('/api/invites', inviteRoutes)
+app.use('/api/friends', friendRoutes)
 app.use('/api/trips', tripRoutes)
+app.use('/api/groups', groupRoutes)
 app.use('/api/weather', weatherRoutes)
 app.use('/api/distance-matrix', distanceRoutes)
 app.use('/api/flights', flightRoutes)
+app.use('/api/places', placeRoutes)
+app.use('/api/rates', rateRoutes)
+app.use('/api/safety', safetyRoutes)
+app.use('/api/maps', mapRoutes)
+app.use('/api/eat', eatRoutes)
+app.use('/api/discover', discoverRoutes)
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' })
