@@ -1,6 +1,8 @@
 <template>
-  <!-- 15px line icons (Lucide shapes); they use the text colour of whatever they sit in -->
-  <svg class="tab-icon" :width="size" :height="size" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+  <!-- Trip tab icons: the hand-drawn doodles where there is one, otherwise 15px line icons (Lucide shapes)
+       that use the text colour of whatever they sit in -->
+  <DoodleIcon v-if="DOODLE_FOR[name]" :name="DOODLE_FOR[name]" :size="Number(size) + 5" />
+  <svg v-else class="tab-icon" :width="size" :height="size" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
     <path v-for="(d, i) in paths" :key="i" :d="d" />
   </svg>
@@ -8,6 +10,13 @@
 
 <script setup>
 import { computed } from 'vue'
+import DoodleIcon from './DoodleIcon.vue'
+
+// Trip tabs -> hand-drawn icons (see doodles.js)
+const DOODLE_FOR = {
+  itinerary: 'calendar', places: 'pin', packing: 'backpack', expenses: 'wallet', photos: 'camera',
+  safety: 'shield', crew: 'users', recap: 'map', travelOptions: 'plane'
+}
 
 const props = defineProps({
   name: { type: String, required: true },
@@ -33,6 +42,8 @@ const ICONS = {
   menu: ['M4 6h16', 'M4 12h16', 'M4 18h16'],
   // three dots
   more: ['M5 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 1 0 0-3', 'M12 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 1 0 0-3', 'M19 10.5a1.5 1.5 0 1 0 0 3 1.5 1.5 0 1 0 0-3'],
+  // folded map
+  recap: ['M9 3 3 5.5v15.5l6-2.5 6 2.5 6-2.5V3l-6 2.5z', 'M9 3v15.5', 'M15 5.5V21'],
   // train
   travelOptions: ['M8 3h8a4 4 0 0 1 4 4v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a4 4 0 0 1 4-4z', 'M4 11h16', 'M12 3v8', 'M8 19l-2 3', 'M18 22l-2-3', 'M8 15h.01', 'M16 15h.01']
 }

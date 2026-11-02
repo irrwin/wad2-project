@@ -1,5 +1,5 @@
 <template>
-  <!-- Trip Crew: everyone on the trip, their arrival, food needs and balance, plus invites -->
+  <!-- Trip Crew: everyone on the trip, their arrival and food needs, plus invites (money owed lives in Expenses) -->
   <div class="cw">
     <!-- ===== Header & quick invite ===== -->
     <header class="cw-head">
@@ -12,7 +12,7 @@
       </div>
       <div class="cw-actions">
         <button type="button" class="cw-primary" :class="{ done: copied }" @click="copyLink" data-testid="crew-copy">
-          {{ copied ? '✓ Link copied' : '🔗 Copy invite link' }}
+          <AppIcon :name="copied ? 'check' : 'link'" :size="15" /> {{ copied ? 'Link copied' : 'Copy invite link' }}
         </button>
         <button v-if="!demo" type="button" class="cw-ghost" @click="$emit('invite')">+ Add member</button>
       </div>
@@ -20,13 +20,15 @@
 
     <!-- ===== Profile cards ===== -->
     <div class="cw-grid">
-      <article v-for="p in people" :key="p.name" class="cw-card" :class="{ me: p.name === me, editing: editing === p.name }">
+      <!-- The whole card opens its editor (the Edit button does the same, for keyboards and screen readers) -->
+      <article v-for="p in people" :key="p.name" class="cw-card" :class="{ me: p.name === me, editing: editing === p.name, clickable: p.canEdit && editing !== p.name }"
+        @click="cardClick(p, $event)">
         <template v-if="editing !== p.name">
           <div class="cw-id">
-            <span class="cw-avatar" :style="{ background: colorFor(p.name) }" aria-hidden="true">
-              {{ p.name.charAt(0).toUpperCase() }}
+            <!-- Their Travel Twin (this trip's outfit if they made one), or their initial -->
+            <TwinFace class="cw-avatar" :style="{ background: colorFor(p.name) }" :user-id="p.id" :version="p.avatarV" :name="p.name" :trip="tripId">
               <span v-if="p.kind !== 'guest'" class="cw-dot" :class="{ on: p.activeNow }"></span>
-            </span>
+            </TwinFace>
             <div class="cw-who">
               <span class="cw-name">{{ p.name }}<span v-if="p.name === me" class="cw-you"> (you)</span></span>
               <span class="cw-status">{{ p.statusText }}</span>
@@ -34,30 +36,31 @@
             <span class="cw-role" :class="'r-' + p.kind" :title="roleHelp[p.kind]">{{ roleNames[p.kind] }}</span>
           </div>
 
-          <p v-if="p.profile.persona" class="cw-persona">🏷️ "{{ p.profile.persona }}"</p>
-          <button v-else-if="p.canEdit" type="button" class="cw-persona add" @click="startEdit(p)">🏷️ + Add a crew title</button>
+          <p v-if="p.profile.persona" class="cw-persona"><AppIcon name="tag" :size="13" /> "{{ p.profile.persona }}"</p>
+          <button v-else-if="p.canEdit" type="button" class="cw-persona add" @click="startEdit(p)"><AppIcon name="tag" :size="13" /> Add a crew title</button>
 
           <div class="cw-pills">
             <span class="cw-pill" :class="{ empty: !p.flight.flight && !p.flight.arrival }">
-              ✈️ <template v-if="p.flight.flight || p.flight.arrival">{{ p.flight.flight || 'Arrives' }}<template v-if="p.flight.arrival"> · Lands {{ arrivalText(p.flight.arrival) }}</template></template>
+              <AppIcon name="plane" :size="14" /> <template v-if="p.flight.flight || p.flight.arrival">{{ p.flight.flight || 'Arrives' }}<template v-if="p.flight.arrival"> · Lands {{ arrivalText(p.flight.arrival) }}</template><template v-if="p.flight.airport"> · {{ p.flight.airport }}</template></template>
               <template v-else>No flight added</template>
             </span>
-            <span v-if="p.flightWith.length" class="cw-pill">🤝 Same flight as {{ p.flightWith.join(', ') }}</span>
+            <!-- Flight home (added from the last day of the itinerary) -->
+            <span v-if="p.profile.departure" class="cw-pill">
+              <AppIcon name="plane" :size="14" /> Flies home {{ arrivalText(p.profile.departure) }}<template v-if="p.profile.departFlight"> · {{ p.profile.departFlight }}</template>
+            </span>
+            <span v-if="p.flightWith.length" class="cw-pill"><AppIcon name="users" :size="13" /> Same flight as {{ p.flightWith.join(', ') }}</span>
+            <!-- Flights between cities on the itinerary (the whole group's plan) -->
+            <span v-for="f in flights" :key="f.id" class="cw-pill" :title="'On the itinerary: ' + f.from.name + ' → ' + f.to.name">
+              <AppIcon name="plane" :size="14" /> {{ shortAirport(f.from.name) }} → {{ shortAirport(f.to.name) }} · {{ flightDay(f) }}<template v-if="f.number"> · {{ f.number }}</template>
+            </span>
             <template v-if="p.diets.length">
               <span v-for="d in p.diets" :key="d.key" class="cw-pill" :class="d.allergy ? 'allergy' : 'diet'">{{ d.icon }} {{ d.label }}</span>
             </template>
-            <span v-else-if="p.hasProfile" class="cw-pill">✓ No restrictions</span>
-            <span v-else class="cw-pill empty">🍽 Food needs not added</span>
+            <span v-else-if="p.hasProfile" class="cw-pill"><AppIcon name="check" :size="13" /> No restrictions</span>
+            <span v-else class="cw-pill empty"><AppIcon name="utensils" :size="13" /> Food needs not added</span>
           </div>
 
-          <div class="cw-foot">
-            <button type="button" class="cw-balance" :class="p.balance > 0.009 ? 'pos' : p.balance < -0.009 ? 'neg' : ''"
-              :title="'See ' + p.name + ' in Expenses'" @click="$emit('go', 'expenses', p.name)">
-              <template v-if="p.balance === null">No expenses yet</template>
-              <template v-else-if="p.balance > 0.009">Gets back {{ money(p.balance, home) }}</template>
-              <template v-else-if="p.balance < -0.009">Owes {{ money(-p.balance, home) }}</template>
-              <template v-else>All settled</template>
-            </button>
+          <div v-if="p.profile.phone || p.canEdit" class="cw-foot">
             <span class="cw-links">
               <a v-if="p.profile.phone" class="cw-link" :href="'https://wa.me/' + p.profile.phone.replace(/[^\d]/g, '')"
                 target="_blank" rel="noopener" :aria-label="'WhatsApp ' + p.name">Message</a>
@@ -84,7 +87,7 @@
           <span class="cw-role r-pending">Pending</span>
         </div>
         <div v-if="canManage(inv)" class="cw-form-btns mt-3">
-          <button type="button" class="cw-ghost" :disabled="busy === inv.id" @click="resend(inv)">{{ resent === inv.id ? '✓ Sent again' : '↻ Resend invite' }}</button>
+          <button type="button" class="cw-ghost" :disabled="busy === inv.id" @click="resend(inv)"><AppIcon :name="resent === inv.id ? 'check' : 'refresh'" :size="14" /> {{ resent === inv.id ? 'Sent again' : 'Resend invite' }}</button>
           <button type="button" class="cw-ghost danger" :disabled="busy === inv.id" @click="revoke(inv)">Revoke</button>
         </div>
       </article>
@@ -93,11 +96,11 @@
     <!-- ===== Group snapshot ===== -->
     <section class="cw-summary" aria-label="Group snapshot">
       <div class="cw-sum-item">
-        <span class="cw-sum-label">🍽 Food needs</span>
+        <span class="cw-sum-label"><AppIcon name="utensils" :size="14" /> Food needs</span>
         <span class="cw-sum-value">{{ dietSummary || 'No restrictions shared' }}</span>
       </div>
       <div class="cw-sum-item">
-        <span class="cw-sum-label">✈️ Arrivals</span>
+        <span class="cw-sum-label"><AppIcon name="plane" :size="14" /> Arrivals</span>
         <span class="cw-sum-value">
           <template v-if="arrivals.length">Earliest {{ arrivalText(arrivals[0]) }}<template v-if="arrivals.length > 1"> · Latest {{ arrivalText(arrivals[arrivals.length - 1]) }}</template></template>
           <template v-else>No flights added yet</template>
@@ -111,9 +114,10 @@
 
 <script>
 import axios from 'axios'
-import { balances, money } from '../expenses.js'
 import { dietTag } from '../crewOptions.js'
 import CrewDetailsForm from './CrewDetailsForm.vue'
+import AppIcon from './AppIcon.vue'
+import TwinFace from './TwinFace.vue'
 
 const COLORS = ['#00798c', '#30638e', '#d0662e', '#7a5bd6', '#c2477d', '#2b8c99']
 
@@ -133,7 +137,7 @@ const DEMO = {
 }
 
 export default {
-  components: { CrewDetailsForm },
+  components: { AppIcon, CrewDetailsForm, TwinFace },
   props: {
     tripId: { type: String, required: true },
     city: { type: String, default: 'Trip' },
@@ -141,10 +145,10 @@ export default {
     members: { type: Array, default: () => [] },
     pendingInvites: { type: Array, default: () => [] },
     crew: { type: Object, default: () => ({}) },
-    expenses: { type: Object, default: null },
     role: { type: String, default: 'member' },
     me: { type: String, default: '' },
-    myId: { type: String, default: '' }
+    myId: { type: String, default: '' },
+    flights: { type: Array, default: () => [] } // flights between cities on the itinerary: [{ id, date, from, to, dep, arr, number }]
   },
   emits: ['invite', 'go', 'changed'],
 
@@ -154,7 +158,6 @@ export default {
       demo,
       profiles: demo ? { ...DEMO.crew } : { ...this.crew },
       pending: demo ? DEMO.pending.slice() : this.pendingInvites.slice(),
-      rates: {},
       copied: false,
       toast: '',
       editing: null,
@@ -174,14 +177,6 @@ export default {
   computed: {
     memberList() {
       return this.demo ? DEMO.members : this.members
-    },
-    home() {
-      return (this.expenses && this.expenses.homeCurrency) || 'SGD'
-    },
-    balanceMap() {
-      const e = this.demo ? null : this.expenses
-      if (!e || !e.items || !e.items.length) return null
-      return balances(this.travellers, e.items, e.settlements || [], this.rates)
     },
     // One entry per traveller, with everything the card shows
     people() {
@@ -214,10 +209,10 @@ export default {
         }
         list.push({
           name, kind, activeNow, statusText, profile, diets, flight, flightWith,
+          id: m ? m.id : '', avatarV: m ? m.avatarV || 0 : 0,
           hasProfile: fromSettings ? !!m.contactSaved : !!this.profiles[name],
           fromSettings,
-          canEdit: name === this.me || (kind === 'guest' && this.role === 'owner') || this.demo,
-          balance: this.balanceMap ? this.balanceMap[name] || 0 : null
+          canEdit: name === this.me || (kind === 'guest' && this.role === 'owner') || this.demo
         })
       }
       // You first, then active people, then the rest
@@ -253,19 +248,15 @@ export default {
     }
   },
 
-  async created() {
-    if (this.balanceMap === null && !(this.expenses && this.expenses.items && this.expenses.items.length)) return
-    try {
-      const res = await axios.get('/api/rates', { params: { base: this.home } })
-      this.rates = res.data.rates
-    } catch (err) {
-      // balances are shown without converting other currencies
-    }
-  },
-
   methods: {
-    money,
-
+    // "Cape Town International Airport" -> "Cape Town"
+    shortAirport(name) {
+      return name.replace(/ (International )?Airport.*$/i, '').split(',')[0]
+    },
+    // "Mon 21 Dec, 12:30"
+    flightDay(f) {
+      return new Date(f.date + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ', ' + f.dep
+    },
     colorFor(name) {
       const i = Math.max(0, this.travellers.indexOf(name))
       return COLORS[i % COLORS.length]
@@ -311,9 +302,10 @@ export default {
       const pr = this.profiles[name] || {}
       if (pr.sameFlightAs) {
         const other = this.profiles[pr.sameFlightAs] || {}
-        if (!other.sameFlightAs) return { flight: other.flight || '', arrival: other.arrival || '' }
+        if (!other.sameFlightAs) return { flight: other.flight || '', arrival: other.arrival || '', airport: other.arriveAt ? other.arriveAt.name : '' }
       }
-      return { flight: pr.flight || '', arrival: pr.arrival || '' }
+      // (the airport is set from the first day of the itinerary)
+      return { flight: pr.flight || '', arrival: pr.arrival || '', airport: pr.arriveAt ? pr.arriveAt.name : '' }
     },
 
     // People you can pick in "Same as …": others with their own flight details
@@ -326,6 +318,13 @@ export default {
         }
       }
       return list
+    },
+
+    // A click anywhere on a card you can edit opens it (not on its own buttons/links, or while it's open)
+    cardClick(p, event) {
+      if (!p.canEdit || this.editing === p.name) return
+      if (event.target.closest('a, button, input, select, textarea, label')) return
+      this.startEdit(p)
     },
 
     startEdit(p) {
@@ -417,7 +416,7 @@ export default {
   margin-bottom: 18px;
 }
 .cw-title {
-  font-family: 'Fredoka', sans-serif;
+  font-family: var(--font-display);
   font-size: 1.6rem;
   margin: 0;
 }
@@ -483,6 +482,9 @@ export default {
   flex-direction: column;
   gap: 10px;
   transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.cw-card.clickable {
+  cursor: pointer;
 }
 .cw-card:hover {
   transform: translateY(-3px);
@@ -632,28 +634,10 @@ export default {
   padding-top: 10px;
   border-top: 1px solid var(--line);
 }
-.cw-balance {
-  border: 0;
-  background: none;
-  padding: 0;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--muted);
-  white-space: nowrap;
-  cursor: pointer;
-}
-.cw-balance:hover {
-  text-decoration: underline;
-}
-.cw-balance.pos {
-  color: var(--mint);
-}
-.cw-balance.neg {
-  color: #ec8a97;
-}
 .cw-links {
   display: flex;
   gap: 14px;
+  margin-left: auto;
 }
 .cw-link {
   border: 0;
@@ -727,7 +711,6 @@ export default {
 .cw-primary:focus-visible,
 .cw-ghost:focus-visible,
 .cw-link:focus-visible,
-.cw-balance:focus-visible,
 .cw-persona.add:focus-visible {
   outline: 3px solid var(--mint);
   outline-offset: 2px;
@@ -755,5 +738,14 @@ export default {
 @media (prefers-reduced-motion: reduce) {
   .cw-card, .cw-primary { transition: none; }
   .cw-card:hover { transform: none; }
+}
+
+/* Phones and touch screens: every control is at least 40px to tap (WCAG / Apple guidance) */
+@media (pointer: coarse), (max-width: 560px) {
+  .cw-link {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+  }
 }
 </style>

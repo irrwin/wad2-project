@@ -16,18 +16,19 @@ function isOnline(u) {
   return !!u.lastActiveAt && Date.now() - new Date(u.lastActiveAt).getTime() < ONLINE_FOR
 }
 function person(u) {
-  return { id: u._id, name: u.name, username: u.username, online: isOnline(u), lastActiveAt: u.lastActiveAt || null }
+  return { id: u._id, name: u.name, username: u.username, online: isOnline(u), lastActiveAt: u.lastActiveAt || null, avatarV: u.avatarVersion || 0 }
 }
 function sameId(a, b) {
   return String(a) === String(b)
 }
 
-// POST /api/friends/ping -> "I'm here" + the numbers for the profile menu badge
+// POST /api/friends/ping -> "I'm here" + the numbers for the profile menu badge and new trip invites
 router.post('/ping', requireAuth, async (req, res) => {
   const me = await User.findByIdAndUpdate(req.userId, { $set: { lastActiveAt: new Date() } }, { new: true }).select('friends friendRequests')
   if (!me) return res.status(404).json({ message: 'User not found.' })
   const online = await User.countDocuments({ _id: { $in: me.friends }, lastActiveAt: { $gte: new Date(Date.now() - ONLINE_FOR) } })
-  res.json({ requests: me.friendRequests.length, online })
+  const invites = await Trip.countDocuments({ 'pendingInvites.user': req.userId }) // trip invites waiting for me
+  res.json({ requests: me.friendRequests.length, online, invites })
 })
 
 // GET /api/friends -> { friends, incoming, outgoing }
@@ -35,9 +36,9 @@ router.get('/', requireAuth, async (req, res) => {
   const me = await User.findById(req.userId).select('friends friendRequests')
   if (!me) return res.status(404).json({ message: 'User not found.' })
 
-  const friends = await User.find({ _id: { $in: me.friends } }).select('name username lastActiveAt')
-  const incomingUsers = await User.find({ _id: { $in: me.friendRequests.map((r) => r.from) } }).select('name username lastActiveAt')
-  const outgoingUsers = await User.find({ 'friendRequests.from': me._id }).select('name username lastActiveAt')
+  const friends = await User.find({ _id: { $in: me.friends } }).select('name username lastActiveAt avatarVersion')
+  const incomingUsers = await User.find({ _id: { $in: me.friendRequests.map((r) => r.from) } }).select('name username lastActiveAt avatarVersion')
+  const outgoingUsers = await User.find({ 'friendRequests.from': me._id }).select('name username lastActiveAt avatarVersion')
 
   // How many trips I share with each friend
   const trips = await Trip.find(await accessQuery(req.userId)).select('members.user')
@@ -68,14 +69,14 @@ router.get('/search', requireAuth, async (req, res) => {
   if (q.length < 3 || q.length > 20 || !/^[a-z0-9._]+$/.test(q)) return res.json([])
   const me = await User.findById(req.userId).select('friends friendRequests')
   const users = await User.find({ username: { $regex: '^' + q.replace(/[.]/g, '\\.') }, _id: { $ne: req.userId } })
-    .select('name username friendRequests').limit(6)
+    .select('name username friendRequests avatarVersion').limit(6)
   const out = []
   for (const u of users) {
     let status = 'none'
     if (me.friends.some((id) => sameId(id, u._id))) status = 'friend'
     else if (me.friendRequests.some((r) => sameId(r.from, u._id))) status = 'incoming' // they asked me
     else if (u.friendRequests.some((r) => sameId(r.from, req.userId))) status = 'outgoing' // I asked them
-    out.push({ id: u._id, name: u.name, username: u.username, status })
+    out.push({ id: u._id, name: u.name, username: u.username, status, avatarV: u.avatarVersion || 0 })
   }
   res.json(out)
 })

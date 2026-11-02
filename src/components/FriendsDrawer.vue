@@ -27,7 +27,7 @@
             </div>
             <ul v-if="results.length" class="fd-list fd-results" aria-label="Search results">
               <li v-for="u in results" :key="u.id" class="fd-row">
-                <span class="fd-avatar sm" :style="{ background: colourFor(u.name) }" aria-hidden="true">{{ initials(u.name) }}</span>
+                <TwinFace class="fd-avatar sm" :style="{ background: colourFor(u.name) }" :user-id="u.id" :version="u.avatarV || 0" :name="u.name" :text="initials(u.name)" />
                 <span class="fd-who">
                   <strong class="fd-name">{{ u.name }}</strong>
                   <span class="fd-muted">@{{ u.username }}</span>
@@ -56,7 +56,7 @@
               </button>
             </div>
 
-            <p v-if="loading && !loaded" class="fd-hint">Loading…</p>
+            <LoadingSkeleton v-if="loading && !loaded" variant="list" :count="4" dark label="Loading your friends…" />
             <p v-else-if="loadError" class="fd-msg bad" role="alert">{{ loadError }}</p>
 
             <!-- ===== Friends ===== -->
@@ -68,9 +68,9 @@
               <ul v-else class="fd-list" aria-label="Your friends">
                 <li v-for="f in list" :key="f.id" class="fd-friend">
                   <div class="fd-row">
-                    <span class="fd-avatar" :style="{ background: colourFor(f.name) }" aria-hidden="true">
-                      {{ initials(f.name) }}<span v-if="f.online" class="fd-dot"></span>
-                    </span>
+                    <TwinFace class="fd-avatar" :style="{ background: colourFor(f.name) }" :user-id="f.id" :version="f.avatarV || 0" :name="f.name" :text="initials(f.name)">
+                      <span v-if="f.online" class="fd-dot"></span>
+                    </TwinFace>
                     <span class="fd-who">
                       <strong class="fd-name">{{ f.name }}</strong>
                       <span class="fd-muted">
@@ -96,7 +96,7 @@
 
                   <!-- Quick invite: pick one of your upcoming trips -->
                   <div v-if="invitingFor === f.id" class="fd-trips">
-                    <p v-if="trips === null" class="fd-hint">Loading your trips…</p>
+                    <LoadingSkeleton v-if="trips === null" variant="list" :count="2" dark label="Loading your trips…" />
                     <p v-else-if="!upcomingTrips.length" class="fd-hint">No upcoming trips to invite {{ f.name }} to.</p>
                     <ul v-else class="fd-trip-list">
                       <li v-for="t in upcomingTrips" :key="t.id" class="fd-trip">
@@ -124,7 +124,7 @@
                 <h3 class="fd-group">Waiting for you</h3>
                 <ul class="fd-list">
                   <li v-for="u in incoming" :key="u.id" class="fd-row">
-                    <span class="fd-avatar" :style="{ background: colourFor(u.name) }" aria-hidden="true">{{ initials(u.name) }}</span>
+                    <TwinFace class="fd-avatar" :style="{ background: colourFor(u.name) }" :user-id="u.id" :version="u.avatarV || 0" :name="u.name" :text="initials(u.name)" />
                     <span class="fd-who">
                       <strong class="fd-name">{{ u.name }}</strong>
                       <span class="fd-muted">@{{ u.username }}</span>
@@ -138,7 +138,7 @@
                 <h3 class="fd-group">Sent</h3>
                 <ul class="fd-list">
                   <li v-for="u in outgoing" :key="u.id" class="fd-row">
-                    <span class="fd-avatar" :style="{ background: colourFor(u.name) }" aria-hidden="true">{{ initials(u.name) }}</span>
+                    <TwinFace class="fd-avatar" :style="{ background: colourFor(u.name) }" :user-id="u.id" :version="u.avatarV || 0" :name="u.name" :text="initials(u.name)" />
                     <span class="fd-who">
                       <strong class="fd-name">{{ u.name }}</strong>
                       <span class="fd-muted">@{{ u.username }} · waiting</span>
@@ -170,6 +170,8 @@ import axios from 'axios'
 import { auth } from '../auth.js'
 import { friends, lastActiveText, copyText } from '../friends.js'
 import AppIcon from './AppIcon.vue'
+import TwinFace from './TwinFace.vue'
+import LoadingSkeleton from './LoadingSkeleton.vue'
 
 const panelEl = ref(null)
 const searchEl = ref(null)
@@ -227,7 +229,7 @@ const upcomingTrips = computed(() => {
 async function load() {
   loading.value = true
   try {
-    const res = await axios.get('/api/friends')
+    const res = await axios.get('/api/friends', { keep: true })
     list.value = res.data.friends
     incoming.value = res.data.incoming
     outgoing.value = res.data.outgoing

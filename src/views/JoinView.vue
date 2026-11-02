@@ -8,7 +8,7 @@
 
     <div v-else-if="error" class="jv-card">
       <div class="jv-body text-center">
-        <div class="jv-big-icon" aria-hidden="true">🔗</div>
+        <div class="jv-big-icon" aria-hidden="true"><AppIcon name="link" :size="34" /></div>
         <h1 class="jv-title">Invite not found</h1>
         <p class="jv-muted">{{ error }}</p>
         <router-link to="/home" class="jv-btn">Go to my trips</router-link>
@@ -31,11 +31,11 @@
             {{ flagFor(d) }} {{ d.split(', ')[0] }}
           </span>
         </p>
-        <p class="jv-meta">🗓 {{ dateText }}</p>
+        <p class="jv-meta"><AppIcon name="calendar" :size="15" /> {{ dateText }}</p>
 
         <div class="jv-going">
           <span class="jv-faces" aria-hidden="true">
-            <span v-for="(m, i) in trip.members.slice(0, 5)" :key="m.name" class="jv-face" :style="{ zIndex: 10 - i }">{{ m.name.charAt(0).toUpperCase() }}</span>
+            <TwinFace v-for="(m, i) in trip.members.slice(0, 5)" :key="m.name" class="jv-face" :style="{ zIndex: 10 - i }" :user-id="m.id || ''" :version="m.avatarV || 0" :name="m.name" />
           </span>
           <span>{{ goingText }}</span>
         </div>
@@ -77,8 +77,11 @@
 import axios from 'axios'
 import { auth } from '../auth.js'
 import { codeForDestination, flagEmoji } from '../destinations.js'
+import AppIcon from '../components/AppIcon.vue'
+import TwinFace from '../components/TwinFace.vue'
 
 export default {
+  components: { AppIcon, TwinFace },
   props: { code: { type: String, required: true } },
 
   data() {
@@ -203,7 +206,7 @@ export default {
   padding: 22px 26px 26px;
 }
 .jv-title {
-  font-family: 'Fredoka', sans-serif;
+  font-family: var(--font-display);
   font-size: 2rem;
   margin: 0 0 4px;
 }

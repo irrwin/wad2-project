@@ -3,6 +3,11 @@ dotenv.config()
 import express from 'express'
 import cors from 'cors'
 import mongoose from 'mongoose'
+
+// Models
+import User from './models/User.js'
+
+// Routes
 import authRoutes from './routes/auth.js'
 import crowdRoutes from './routes/crowd.js'
 import preferenceRoutes from './routes/preferences.js'
@@ -22,13 +27,32 @@ import groupRoutes from './routes/groups.js'
 import mapRoutes from './routes/maps.js'
 import eatRoutes from './routes/eat.js'
 import discoverRoutes from './routes/discover.js'
-import User from './models/User.js'
+import avatarRoutes from './routes/avatar.js'
+import { imageRoute, flagRoute } from './images.js'
+import iconRoutes from './routes/icons.js'
+import travelRoutes from './routes/travel.js'
+import { rateLimit } from './rateLimit.js'
 
 const app = express()
 app.use(cors())
 app.use(express.json())
 
-// Routes
+// Request limits per IP address, per minute (see rateLimit.js)
+app.use('/api', rateLimit({ max: 600 })) // everything together: far above normal use
+const loginLimit = rateLimit({ max: 10, message: 'Too many sign-in attempts. Please wait a minute and try again.' })
+app.post('/api/auth/login', loginLimit)
+app.post('/api/auth/register', loginLimit)
+app.post('/api/auth/forgot', loginLimit)
+app.post('/api/auth/reset', loginLimit)
+const searchLimit = rateLimit({ max: 60, message: 'Searching too fast. Please wait a moment.' })
+app.use('/api/invites/users', searchLimit)
+app.use('/api/friends/search', searchLimit)
+// Routes that call outside services (weather, maps, crowds...) which have their own quotas
+const outsideLimit = rateLimit({ max: 120, message: 'Too many lookups. Please wait a moment and try again.' })
+for (const path of ['/api/crowd', '/api/weather', '/api/distance-matrix', '/api/travel', '/api/flights', '/api/places', '/api/rates', '/api/safety', '/api/maps', '/api/eat', '/api/discover']) {
+  app.use(path, outsideLimit)
+}
+
 app.use('/api/auth', authRoutes)
 app.use('/api/crowd', crowdRoutes)
 app.use('/api/preferences', preferenceRoutes)
@@ -43,11 +67,16 @@ app.use('/api/weather', weatherRoutes)
 app.use('/api/distance-matrix', distanceRoutes)
 app.use('/api/flights', flightRoutes)
 app.use('/api/places', placeRoutes)
+app.use('/api/travel', travelRoutes) // travel times between stops (itinerary, Other journeys)
+app.use('/api/icons', iconRoutes) // 3D icons (Fluent Emoji), cached on disk
 app.use('/api/rates', rateRoutes)
 app.use('/api/safety', safetyRoutes)
 app.use('/api/maps', mapRoutes)
 app.use('/api/eat', eatRoutes)
 app.use('/api/discover', discoverRoutes)
+app.use('/api/avatar', avatarRoutes) // Travel Twin: XP, outfits, pictures
+app.get('/api/flag/:code', flagRoute) // country flags from our disk (Discover's country banners)
+app.get('/api/img', imageRoute) // Wikimedia photos from our disk cache (no lookup limit: a page shows ~200)
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' })
