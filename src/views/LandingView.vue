@@ -3,124 +3,148 @@
     <!-- Landing page: an animated night scene with the brand, a big title and two ways in,
          then a scroll story: a 3D app window shows the four things the app does -->
     <section class="lp-hero">
-    <!-- ===== The scene: the photo, with the moving parts drawn on top in the same coordinates ===== -->
-    <!-- The stage keeps the photo's shape on every screen and keeps the mountain in view
-         (on a phone the right part of the photo is shown, not the empty middle) -->
-    <div class="lp-stage" :class="{ shaking: shaking }" aria-hidden="true">
-    <div class="lp-photo"></div>
-    <svg class="lp-scene" viewBox="0 0 1376 768" preserveAspectRatio="none">
-      <defs>
-        <filter id="lp-soft"><feGaussianBlur stdDeviation="1.4" /></filter>
-        <!-- The plane's body: lit warm from above by the sunset, darker underneath -->
-        <linearGradient id="lp-hull" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#f6ead6" />
-          <stop offset="0.55" stop-color="#b9b6b0" />
-          <stop offset="1" stop-color="#4b5560" />
-        </linearGradient>
-        <linearGradient id="lp-wing" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#d9d2c6" />
-          <stop offset="1" stop-color="#58626d" />
-        </linearGradient>
-      </defs>
+      <!-- ===== Travel journal hero ===== -->
+    <div class="journal-hero">
+      <header class="journal-nav">
+        <div class="journal-brand">
+          <div class="journal-logo">
+            <!-- same paper-plane doodle as the logo in the app's top bar -->
+            <DoodleIcon name="plane" :size="40" tint="cream" anim="float" />
+          </div>
 
-      <!-- Tap the mountain: it erupts (sparks, a flash and smoke) -->
-      <g class="lp-layer" style="--depth: 10px">
-        <path class="lp-volcano-hit" d="M985 255 L1100 255 L1376 470 L1376 660 L700 660 Z" @click="erupt" />
-        <g v-for="e in eruptions" :key="e.id" class="lp-erupt">
-          <circle class="lp-erupt-glow" :cx="SUMMIT.x" :cy="SUMMIT.y" r="70" />
-          <circle v-for="m in e.smoke" :key="'m' + m.id" class="lp-smoke" :cx="SUMMIT.x + m.x" :cy="SUMMIT.y" :r="m.r"
-            :style="{ '--dx': m.dx + 'px', '--dy': m.dy + 'px', animationDelay: m.d + 's' }" />
-          <circle v-for="p in e.sparks" :key="'p' + p.id" class="lp-spark" :cx="SUMMIT.x + p.x" :cy="SUMMIT.y" :r="p.r"
-            :style="{ '--dx': p.dx + 'px', '--dy': p.dy + 'px', '--fall': p.fall + 'px', fill: p.c, animationDuration: p.t + 's', animationDelay: p.d + 's' }" />
-        </g>
-      </g>
+          <span class="journal-brand-name">Chui-se Your Trip</span>
+        </div>
 
-      <!-- Trip routes over the land, with glowing stops -->
-      <g class="lp-layer" style="--depth: 14px">
-        <path d="M612 422 C 600 500, 680 565, 769 561 C 830 558, 880 540, 922 528 C 990 508, 1050 480, 1105 463 C 1200 440, 1310 420, 1327 335 C 1335 300, 1300 285, 1260 290" class="lp-route" />
-        <path d="M1105 463 C 1180 480, 1240 500, 1288 507 S 1360 525, 1400 540" class="lp-route" />
-        <circle v-for="n in nodes" :key="'n' + n.id" :cx="n.x" :cy="n.y" r="4.5" class="lp-node" :style="{ animationDelay: n.d + 's' }" />
-      </g>
+        <router-link to="/login" class="journal-signin">
+          Sign In / Join
+        </router-link>
+      </header>
 
-      <!-- Embers rising off the summit -->
-      <g class="lp-layer" style="--depth: 10px">
-        <circle v-for="e in embers" :key="'e' + e.id" :cx="e.x" cy="262" :r="e.s" class="lp-ember"
-          :style="{ animationDelay: e.d + 's', animationDuration: e.t + 's', '--drift': e.drift + 'px' }" />
-      </g>
+      <div class="journal-dots" aria-hidden="true"></div>
 
-      <!-- The plane: takes off from a route stop, climbs away to the left, then comes back high
-           across the sky and glides down onto another stop. Moved by script (see flyPlane)
-           so its nose never tips more than a real climb or descent would. -->
-      <g class="lp-layer" style="--depth: 20px">
-        <path v-for="(leg, k) in LEGS" :key="'t' + k" :ref="(el) => { if (el) trailEls[k] = el }" :d="leg.d" fill="none"
-          stroke="#f7f2e8" stroke-opacity="0.32" stroke-width="1.3" stroke-linecap="round" filter="url(#lp-soft)" opacity="0" />
-        <g ref="planeEl" opacity="0">
-          <!-- A simple side-view jet, nose to the right, centred on 0,0 (flipped by script when flying left) -->
-          <!-- A slim airliner seen from the side, nose to the right, centred on 0,0 (flipped by script when flying left).
-               Shaded by the sunset and drawn small, with blinking navigation lights like a real plane at dusk. -->
-          <g ref="imgEl" class="lp-plane">
-            <!-- far wing and tailplane (behind the body, in shadow) -->
-            <path class="shade" d="M7 -2.8 L1.5 -6 L3.4 -6.2 L11 -3.1 Z" />
-            <path class="shade" d="M-30 -1.2 L-35.5 -4.6 L-33.6 -4.8 L-26 -1.6 Z" />
-            <!-- body -->
-            <path class="hull" d="M-37 -1.2 C-37 -2.8 -34.5 -3.4 -30 -3.4 L27 -3.4 C33.5 -3.4 38.5 -1.9 41 0 C38.5 1.7 33.5 2.4 27 2.4 L-27.5 2.4 C-33.5 2.4 -37 1.2 -37 -1.2 Z" />
-            <!-- tail fin, swept back -->
-            <path class="wing" d="M-35.5 -3 L-33.6 -14.6 L-30.6 -14.6 L-22.5 -3.4 Z" />
-            <!-- near tailplane -->
-            <path class="wing" d="M-30.5 0.6 L-36.6 5 L-34.4 5.2 L-25.5 1.2 Z" />
-            <!-- near wing, swept back and down towards us, with its engine -->
-            <path class="wing" d="M3.5 1 L-8.6 10.6 L-5.4 11 L11.5 1.6 Z" />
-            <!-- engine hanging just under the wing, on a short pylon -->
-            <path class="engine" d="M3.8 3 L5.6 3 L5.4 3.9 L3.6 3.9 Z" />
-            <path class="engine" d="M0.6 3.7 H8.2 C9.1 3.7 9.4 4.4 9.4 4.8 C9.4 5.3 9.1 5.9 8.2 5.9 H0.6 C0.1 5.9 -0.1 5.3 -0.1 4.8 C-0.1 4.4 0.1 3.7 0.6 3.7 Z" />
-            <!-- cockpit windows and a cabin window line -->
-            <path class="glass" d="M35.2 -2.4 C37 -2 38.4 -1.3 39.2 -0.8 L36 -0.9 Z" />
-            <path class="windows" d="M-24 -1.4 H30" />
-            <!-- lights: green on the near wingtip, red on the far one, white on the tail, red beacon on the belly -->
-            <circle class="nav green" cx="-8" cy="10.8" r="0.9" />
-            <circle class="nav red" cx="2" cy="-6.1" r="0.75" />
-            <circle class="strobe" cx="-36.4" cy="-1.4" r="1" />
-            <circle class="beacon" cx="-6" cy="2.9" r="0.85" />
-          </g>
-        </g>
-      </g>
-    </svg>
-    </div>
-
-    <!-- Drifting clouds and rising embers (plain HTML, lighter than SVG filters) -->
-    <div class="lp-clouds" aria-hidden="true">
-      <span class="lp-cloud c1"></span>
-      <span class="lp-cloud c2"></span>
-      <span class="lp-cloud c3"></span>
-    </div>
-    <div class="lp-shade" aria-hidden="true"></div>
-
-    <!-- ===== Brand, title and the two ways in ===== -->
-    <header class="lp-brand">
-      <svg class="lp-compass" viewBox="0 0 40 40" aria-hidden="true">
-        <circle cx="20" cy="20" r="17" fill="none" stroke="#edae49" stroke-width="2.5" />
-        <path d="M27 13 L22 22 L13 27 L18 18 Z" fill="#edae49" />
-        <circle cx="20" cy="20" r="2" fill="#05080d" />
-      </svg>
-      <span class="lp-brand-text"><span>CHUI-SE</span> <span>YOUR TRIP</span></span>
-    </header>
-
-    <router-link to="/login" class="lp-btn ghost lp-top-signin">Sign in / Join</router-link>
-
-    <main class="lp-content">
-      <h1 class="lp-title"><span>Travel</span><span class="lp-accent">without</span><span>limits</span></h1>
-      <p class="lp-tag">Plan together. Drift nowhere.</p>
-      <div class="lp-actions">
-        <!-- Explore straight away as a guest; sign in only when saving something -->
-        <router-link to="/discover" class="lp-btn primary">Explore trips</router-link>
+      <div class="journal-route" aria-hidden="true">
+        <span class="route-plane">✈</span>
+        <span class="route-line"></span>
       </div>
-    </main>
 
-    <!-- Invite to scroll down to the story -->
-    <button type="button" class="lp-cue" @click="goToStep(0)">
-      <span>See how it works</span>
-      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
-    </button>
+      <main class="journal-content">
+        <div class="journal-copy">
+          <span class="journal-eyebrow">
+            YOUR WHOLE TRIP, IN ONE PLACE
+          </span>
+
+          <h1>
+            Plan together.<br />
+            <span>Travel better.</span>
+          </h1>
+
+          <p>
+            Stop juggling ten tabs. Save places, vote as a crew, and let us do the
+            work for you. Vibes Only!
+          </p>
+
+          <div class="journal-actions">
+            <router-link to="/discover" class="journal-primary">
+              Explore Trips
+              <span>→</span>
+            </router-link>
+          </div>
+        </div>
+
+        <div class="journal-art">
+          <!-- Behind the postcard: a passport -->
+          <div class="journal-passport" aria-hidden="true">
+            <span class="passport-title">Passport</span>
+            <!-- Gold foil crest: a globe with a plane on an orbit ring -->
+            <svg class="passport-crest" viewBox="0 0 100 100">
+              <g fill="none" stroke="currentColor" stroke-linecap="round">
+                <circle cx="50" cy="52" r="30" stroke-width="3" />
+                <path d="M50 22c-11 9-11 51 0 60M50 22c11 9 11 51 0 60" stroke-width="2.4" />
+                <path d="M21 52h58M25 38h50M25 66h50" stroke-width="2.4" />
+                <ellipse cx="50" cy="52" rx="45" ry="15" stroke-width="2" stroke-dasharray="1 5" transform="rotate(-18 50 52)" />
+              </g>
+              <path d="M84 29l9-4-1.3-2-4.6 1.4-4.2-3.6h-2l2.3 4.2-3.3 1-1.1-1.4h-1.5l.8 3.3z" fill="currentColor" />
+            </svg>
+          </div>
+
+          <div class="journal-postcard postcard-front">
+            <span class="postcard-washi left" aria-hidden="true"></span>
+            <span class="postcard-washi right" aria-hidden="true"></span>
+
+            <!-- The mountain photo, with Mount Fuji in the middle. Tap it and the volcano erupts
+                 (the same sparks, flash and smoke as before, drawn in the photo's own coordinates) -->
+            <button type="button" class="postcard-picture photo" :class="{ shaking }" aria-label="Mount Fuji at sunset. Tap to make it erupt" @click="erupt">
+              <!-- Zoomed out, still centred on the summit (x 1042). The photo stops at x 1376, so a thin strip of its
+                   right edge is stretched and blurred to fill the last bit of the frame -->
+              <svg class="picture-svg" viewBox="642 140 800 400" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+                <defs>
+                  <filter id="pc-edge-blur" x="-20%" y="-5%" width="140%" height="110%"><feGaussianBlur stdDeviation="8" /></filter>
+                  <!-- fades the photo's right edge into the blurred strip, so there's no seam -->
+                  <linearGradient id="pc-edge-fade" x1="0" x2="1" y1="0" y2="0">
+                    <stop offset="0" stop-color="#fff" />
+                    <stop offset="1" stop-color="#000" />
+                  </linearGradient>
+                  <mask id="pc-edge-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="1376" height="768">
+                    <rect x="0" y="0" width="1316" height="768" fill="#fff" />
+                    <rect x="1316" y="0" width="60" height="768" fill="url(#pc-edge-fade)" />
+                  </mask>
+                  <radialGradient id="pc-vignette" cx="50%" cy="45%" r="70%">
+                    <stop offset="60%" stop-color="#1a1208" stop-opacity="0" />
+                    <stop offset="100%" stop-color="#1a1208" stop-opacity="0.45" />
+                  </radialGradient>
+                </defs>
+                <g filter="url(#pc-edge-blur)">
+                  <svg x="1300" y="0" width="160" height="768" viewBox="1366 0 10 768" preserveAspectRatio="none">
+                    <image :href="mountainPhoto" x="0" y="0" width="1376" height="768" />
+                  </svg>
+                </g>
+                <image :href="mountainPhoto" x="0" y="0" width="1376" height="768" mask="url(#pc-edge-mask)" />
+                <circle v-for="e in embers" :key="'pe' + e.id" :cx="e.x" cy="262" :r="e.s" class="lp-ember"
+                  :style="{ animationDelay: e.d + 's', animationDuration: e.t + 's', '--drift': e.drift + 'px' }" />
+                <g v-for="e in eruptions" :key="'pc' + e.id" class="lp-erupt">
+                  <circle class="lp-erupt-glow" :cx="SUMMIT.x" :cy="SUMMIT.y" r="70" />
+                  <circle v-for="m in e.smoke" :key="'m' + m.id" class="lp-smoke" :cx="SUMMIT.x + m.x" :cy="SUMMIT.y" :r="m.r"
+                    :style="{ '--dx': m.dx + 'px', '--dy': m.dy + 'px', animationDelay: m.d + 's' }" />
+                  <circle v-for="pt in e.sparks" :key="'p' + pt.id" class="lp-spark" :cx="SUMMIT.x + pt.x" :cy="SUMMIT.y" :r="pt.r * 1.6"
+                    :style="{ '--dx': pt.dx + 'px', '--dy': pt.dy + 'px', '--fall': pt.fall + 'px', fill: pt.c, animationDuration: pt.t + 's', animationDelay: pt.d + 's' }" />
+                </g>
+                <rect x="642" y="140" width="800" height="400" fill="url(#pc-vignette)" pointer-events="none" />
+              </svg>
+            </button>
+
+            <div class="postcard-caption">
+              <strong>The world is calling</strong>
+              <span>Where are we going next?</span>
+            </div>
+
+            <!-- A passport entry stamp, inked over the photo's corner -->
+            <svg class="postcard-entry" viewBox="0 0 120 84" aria-hidden="true">
+              <g fill="none" stroke="currentColor" stroke-width="3">
+                <rect x="4" y="4" width="112" height="76" rx="14" />
+                <rect x="11" y="11" width="98" height="62" rx="9" stroke-width="1.6" stroke-dasharray="3 3" />
+              </g>
+              <text x="60" y="34" text-anchor="middle" fill="currentColor" font-size="17" letter-spacing="2">ARRIVED</text>
+              <path d="M30 46h60" stroke="currentColor" stroke-width="1.6" />
+              <text x="60" y="64" text-anchor="middle" fill="currentColor" font-size="13" letter-spacing="1.5">FUJI · JP</text>
+              <path d="M95 38l10-3-1-1.5-3.5 1-3-3h-1.5l1.5 3.5-2 .5-.5-1H94l.5 2.5z" fill="currentColor" />
+            </svg>
+          </div>
+
+        </div>
+      </main>
+
+      <div class="journal-scroll">
+        <!-- A big, obvious way down to the walkthrough -->
+        <button type="button" class="journal-start" @click="goToStep(0)">
+          <span class="journal-start-text">
+            <strong>Start the journey</strong>
+          </span>
+          <span class="journal-arrow" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6" /></svg>
+          </span>
+        </button>
+      </div>
+    </div>
     </section>
 
     <!-- ===== Scroll story: the window stays pinned while you scroll; each quarter is one step ===== -->
@@ -486,6 +510,8 @@
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute } from 'vue-router'
 import AuthJoinModal from '../components/AuthJoinModal.vue'
+import DoodleIcon from '../components/DoodleIcon.vue'
+import mountainPhoto from '../assets/landing-bg.jpg'
 
 // Sign in / Join dialog. /welcome?auth=signin or ?code=XXXX opens it straight away (handy for links)
 const route = useRoute()
@@ -541,12 +567,6 @@ function erupt() {
   setTimeout(() => { eruptions.value = eruptions.value.filter((e) => e.id !== id) }, 4600) // once the sparks and smoke are gone
 }
 
-// The route stops, where they sit in the photo
-const nodes = [
-  { id: 1, x: 612, y: 422, d: 0 }, { id: 2, x: 769, y: 561, d: 0.6 }, { id: 3, x: 922, y: 528, d: 1.2 },
-  { id: 4, x: 1105, y: 463, d: 1.8 }, { id: 5, x: 1288, y: 507, d: 2.4 }, { id: 6, x: 1327, y: 335, d: 3 }
-]
-
 // Parallax: the mouse position, from -1 to 1 on each axis (each layer moves by its own depth)
 const mx = ref(0)
 const my = ref(0)
@@ -569,8 +589,8 @@ const STEPS = [
     text: 'Drag places onto a day. Travel times, meal breaks and the order of stops work themselves out.',
     points: ['Drag or tap arrows to reorder', 'Optimize route in one tap', 'Lock reservations to their time'] },
   { key: 'smart', label: 'Travel smart', title: 'Ready for rain, crowds and costs',
-    text: 'Live weather and crowd levels nudge your plan while you travel, and shared expenses split themselves.',
-    points: ['Indoor swaps when rain is coming', 'Go when it\'s quiet', 'Who owes who, in any currency'] }
+    text: 'Weather and crowd conditions help you adapt your plan, while shared expenses keep group spending organised.',
+    points: ['Adapt activities when rain affects the plan', 'Go when it\'s quiet', 'Who owes who, in any currency'] }
 ]
 const PILLARS = [
   { x: 30, y: 40, h: 58 }, { x: 46, y: 26, h: 34 }, { x: 62, y: 50, h: 46 }, { x: 76, y: 32, h: 28 },
@@ -583,8 +603,8 @@ const VOTES = [
   { name: 'Kyoto Tower', yes: 1, faces: ['#66a182'] }
 ]
 // ---- what the 3D window shows ----
-const URLS = ['discover', 'trip/kyoto/places', 'trip/kyoto/itinerary', 'trip/kyoto/today']
-const NAV_TABS = ['Discover', 'Places', 'Itinerary', 'Today']
+const URLS = ['discover', 'trip/kyoto/places', 'trip/kyoto/itinerary', 'trip/kyoto/safety']
+const NAV_TABS = ['Discover', 'Places', 'Itinerary', 'Safety'] // tabs the app really has
 const DISCOVER_CITIES = [
   { name: 'Kyoto', score: 92, note: '✓ Great time to go', icon: '⛩️', bg: 'linear-gradient(160deg, #f6c7a0 0%, #d1495b 55%, #5b2a52 100%)' },
   { name: 'Kanazawa', score: 87, note: '~$85/day', icon: '🏯', gem: true, bg: 'linear-gradient(160deg, #cfe3f1 0%, #00798c 55%, #003d5b 100%)' }
@@ -796,76 +816,14 @@ function goToStep(k) {
   lpEl.value.scrollTo({ top, behavior: reduceMotion ? 'auto' : 'smooth' })
 }
 
-// Brush and condensed fonts, only loaded on this page
+// The app's fonts (Lilita One for titles and buttons, Plus Jakarta Sans for reading), in case this is the first page opened
 function loadFonts() {
   if (document.getElementById('lp-fonts')) return
   const link = document.createElement('link')
   link.id = 'lp-fonts'
   link.rel = 'stylesheet'
-  link.href = 'https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,500;1,6..72,500&family=Oswald:wght@500;600&family=Inter:wght@400;500;600&display=swap'
+  link.href = 'https://fonts.googleapis.com/css2?family=Lilita+One&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap'
   document.head.appendChild(link)
-}
-
-// ---------- the plane ----------
-// Two legs in photo coordinates: out (take off right, climb away left) and back (high and far, gliding down to land)
-const LEGS = [
-  { d: 'M1288 507 C 1200 470, 1120 400, 980 330 S 700 215, 480 165 S 120 95, -140 70', time: 16000, from: 0.35, to: 0.8 },
-  { d: 'M-140 40 C 200 25, 560 50, 860 120 S 1220 260, 1327 335', time: 18000, from: 0.4, to: 0.6 }
-]
-const REST_TIME = 1500   // ms off screen between legs
-const MAX_PITCH = 8      // degrees: airliners climb and descend gently
-const trailEls = []
-const planeEl = ref(null)
-const imgEl = ref(null)
-let frame = null
-let startedAt = 0
-
-function easeInOut(t) {
-  return 0.5 - Math.cos(Math.PI * t) / 2 // slow start, cruise, slow finish
-}
-function pathFor(k) {
-  return trailEls[k]
-}
-function flyPlane(now) {
-  if (!planeEl.value || !trailEls[0] || !trailEls[1]) return
-  if (!startedAt) startedAt = now
-  const cycle = LEGS[0].time + LEGS[1].time + 2 * REST_TIME
-  let elapsed = (now - startedAt) % cycle
-  // Which leg are we on, and how far through it?
-  let k = 0
-  if (elapsed >= LEGS[0].time + REST_TIME) {
-    k = 1
-    elapsed -= LEGS[0].time + REST_TIME
-  }
-  const leg = LEGS[k]
-  const path = pathFor(k)
-  const total = path.getTotalLength()
-  const flying = elapsed < leg.time
-  const t = Math.min(1, elapsed / leg.time)
-  const along = easeInOut(t) * total
-  const here = path.getPointAtLength(along)
-  const ahead = path.getPointAtLength(Math.min(total, along + 6))
-  const behind = path.getPointAtLength(Math.max(0, along - 6))
-  const goingLeft = k === 0
-  // Heading from the path, then turned into a gentle nose-up / nose-down angle
-  let angle = Math.atan2(ahead.y - behind.y, ahead.x - behind.x) * 180 / Math.PI
-  if (goingLeft) angle = angle > 0 ? angle - 180 : angle + 180
-  let pitch = goingLeft ? -angle : angle
-  pitch = Math.max(-MAX_PITCH, Math.min(MAX_PITCH, pitch))
-  const rot = goingLeft ? -pitch : pitch
-  const bob = Math.sin(now / 900) * 1.2
-  const sway = Math.sin(now / 1300) * 1.2
-  const size = leg.from + (leg.to - leg.from) * t
-  const fade = flying ? Math.min(1, t / 0.06, (1 - t) / 0.08) : 0
-  imgEl.value.setAttribute('transform', goingLeft ? 'scale(-1,1)' : '')
-  planeEl.value.setAttribute('transform', 'translate(' + here.x.toFixed(1) + ' ' + (here.y + bob).toFixed(1) + ') rotate(' + (rot + sway).toFixed(2) + ') scale(' + size.toFixed(3) + ')')
-  planeEl.value.setAttribute('opacity', fade.toFixed(2))
-  // Vapour trail: the stretch just behind the plane on this leg; the other leg's trail is hidden
-  path.style.strokeDasharray = '110 ' + total
-  path.style.strokeDashoffset = (110 - along).toFixed(1)
-  path.setAttribute('opacity', (fade * Math.min(1, t * 5)).toFixed(2))
-  pathFor(1 - k).setAttribute('opacity', '0')
-  frame = requestAnimationFrame(flyPlane)
 }
 
 onMounted(() => {
@@ -894,18 +852,8 @@ onMounted(() => {
   }
   onScroll() // in case the page opens part-way down
   window.addEventListener('resize', onScroll)
-  if (reduceMotion) {
-    // Still: just show the plane mid-flight
-    const p = trailEls[0].getPointAtLength(trailEls[0].getTotalLength() * 0.55)
-    imgEl.value.setAttribute('transform', 'scale(-1,1)')
-    planeEl.value.setAttribute('transform', 'translate(' + p.x + ' ' + p.y + ') rotate(8)')
-    planeEl.value.setAttribute('opacity', '1')
-  } else {
-    frame = requestAnimationFrame(flyPlane)
-  }
 })
 onBeforeUnmount(() => {
-  cancelAnimationFrame(frame)
   if (featWatcher) featWatcher.disconnect()
   if (phoneWatcher) phoneWatcher.disconnect()
   stopPhone()
@@ -924,7 +872,8 @@ onBeforeUnmount(() => {
   overflow-y: auto; /* the page scrolls inside here: hero, then the story */
   background: #05080d;
   color: #fff;
-  font-family: 'Inter', system-ui, sans-serif; /* body text; headings use Newsreader, labels and buttons Oswald */
+  font-family: var(--font-body); /* body text in Plus Jakarta Sans; titles, labels and buttons in Lilita One (var(--sb-display)) */
+  font-synthesis: none; /* Lilita One has one weight: never fake a bold version of it */
 }
 /* The first screen: the night scene (everything in it is placed inside this box) */
 .lp-hero {
@@ -932,43 +881,12 @@ onBeforeUnmount(() => {
   height: var(--vh);
   overflow: hidden;
 }
-/* The photo is 1376 x 768. The stage is that shape, big enough to cover the screen (plus a little
-   room for the mouse parallax), slid sideways so the focus point (--focus, 0-1 across the photo)
-   sits mid-screen without ever leaving a gap at the edges. */
 .lp {
   --vh: 100vh;
   --focus: 0.6;
 }
 @supports (height: 100dvh) {
   .lp { --vh: 100dvh; } /* phones: the visible height, not counting the address bar */
-}
-.lp-stage {
-  --sw: calc(max(100vw, var(--vh) * 1.7917) * 1.04);
-  --sh: calc(var(--sw) * 0.5581);
-  position: absolute;
-  width: var(--sw);
-  height: var(--sh);
-  left: clamp(calc(100vw - var(--sw)), calc(50vw - var(--sw) * var(--focus)), 0px);
-  top: calc((var(--vh) - var(--sh)) / 2);
-}
-.lp-photo {
-  position: absolute;
-  inset: 0;
-  background: #05080d url('../assets/landing-bg.jpg') center / 100% 100% no-repeat;
-  transform: translate(calc(var(--mx) * -8px), calc(var(--my) * -5px));
-  transition: transform 0.6s cubic-bezier(.2, .7, .2, 1);
-}
-.lp-scene {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-/* ----- Tap the mountain: eruption ----- */
-.lp-volcano-hit {
-  fill: transparent;
-  cursor: pointer;
-  pointer-events: all;
 }
 .lp-erupt-glow {
   fill: #ff8a3d;
@@ -1011,105 +929,12 @@ onBeforeUnmount(() => {
   20% { opacity: 0.45; }
   100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(3); }
 }
-/* A little rumble */
-.lp-stage.shaking {
-  animation: lp-shake 0.5s linear;
-}
 @keyframes lp-shake {
   0%, 100% { transform: translate(0, 0); }
   20% { transform: translate(-3px, 2px); }
   40% { transform: translate(3px, -2px); }
   60% { transform: translate(-2px, 1px); }
   80% { transform: translate(2px, -1px); }
-}
-
-/* Each layer drifts against the mouse by its depth: far layers barely, near layers more */
-.lp-layer {
-  transform: translate(calc(var(--mx) * var(--depth) * -1), calc(var(--my) * var(--depth) * -0.6));
-  transition: transform 0.6s cubic-bezier(.2, .7, .2, 1);
-}
-/* Vapour trail: a short bright stretch of the flight path that travels with the plane */
-/* The plane: sunset-lit body, shaded wings, dark windows, and small lights that blink like a real one */
-.lp-plane {
-  opacity: 0.92;
-}
-.lp-plane .hull { fill: url(#lp-hull); }
-.lp-plane .wing { fill: url(#lp-wing); }
-.lp-plane .shade { fill: #4b5560; }
-.lp-plane .engine { fill: #6b737c; }
-.lp-plane .glass { fill: #1d2b36; }
-.lp-plane .windows {
-  stroke: #2b3a46;
-  stroke-width: 0.9;
-  stroke-dasharray: 0.9 1.6;
-  opacity: 0.55;
-}
-.lp-plane .nav.green { fill: #6dff9e; filter: drop-shadow(0 0 1.5px #6dff9e); }
-.lp-plane .nav.red { fill: #ff5a5a; filter: drop-shadow(0 0 1.5px #ff5a5a); }
-.lp-plane .strobe {
-  fill: #ffffff;
-  opacity: 0;
-  animation: lp-strobe 1.4s linear infinite;
-}
-.lp-plane .beacon {
-  fill: #ff4d4d;
-  animation: lp-beacon 1.1s ease-in-out infinite;
-}
-@keyframes lp-strobe {
-  0%, 6% { opacity: 1; }
-  10%, 100% { opacity: 0; }
-}
-@keyframes lp-beacon {
-  0%, 100% { opacity: 0.25; }
-  50% { opacity: 1; }
-}
-.lp-route {
-  fill: none;
-  stroke: #edae49;
-  stroke-width: 2;
-  stroke-dasharray: 6 9;
-  opacity: 0.75;
-  animation: lp-dash 3s linear infinite;
-}
-@keyframes lp-dash {
-  to { stroke-dashoffset: -60; }
-}
-.lp-node {
-  fill: #edae49;
-  filter: drop-shadow(0 0 6px #edae49);
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: lp-node 3.6s ease-in-out infinite;
-}
-@keyframes lp-node {
-  50% { transform: scale(1.6); opacity: 0.6; }
-}
-
-/* Clouds */
-.lp-clouds {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-.lp-cloud {
-  position: absolute;
-  width: 220px;
-  height: 60px;
-  border-radius: 60px;
-  background:
-    radial-gradient(40px 34px at 30% 40%, rgba(255, 255, 255, 0.9), transparent 70%),
-    radial-gradient(52px 40px at 55% 35%, rgba(255, 255, 255, 0.85), transparent 70%),
-    radial-gradient(70px 30px at 50% 70%, rgba(220, 228, 236, 0.8), transparent 75%);
-  filter: blur(2px);
-  opacity: 0.7;
-  animation: lp-cloud linear infinite;
-}
-.lp-cloud.c1 { top: 28%; animation-duration: 70s; animation-delay: -20s; }
-.lp-cloud.c2 { top: 18%; transform: scale(0.7); opacity: 0.45; animation-duration: 95s; animation-delay: -60s; }
-.lp-cloud.c3 { top: 36%; transform: scale(0.5); opacity: 0.35; animation-duration: 120s; animation-delay: -90s; }
-@keyframes lp-cloud {
-  from { left: 105%; }
-  to { left: -30%; }
 }
 
 /* Embers rising from the summit (SVG circles, so they line up with the photo) */
@@ -1123,213 +948,6 @@ onBeforeUnmount(() => {
   0% { transform: translate(0, 0); opacity: 0; }
   15% { opacity: 1; }
   100% { transform: translate(var(--drift), -200px); opacity: 0; }
-}
-
-/* Darkens the left so the title reads on any screen */
-.lp-shade {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(90deg, rgba(5, 8, 13, 0.85) 0%, rgba(5, 8, 13, 0.45) 40%, transparent 65%);
-}
-
-/* Brand */
-.lp-brand {
-  position: absolute;
-  top: 28px;
-  left: 40px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-family: 'Oswald', 'Inter', sans-serif;
-  font-weight: 600;
-  font-size: 22px;
-  letter-spacing: 0.06em;
-  color: #edae49;
-  text-shadow: 0 0 18px rgba(237, 174, 73, 0.5);
-}
-.lp-compass {
-  width: 38px;
-  height: 38px;
-  filter: drop-shadow(0 0 8px rgba(237, 174, 73, 0.7));
-  animation: lp-spin 12s ease-in-out infinite;
-}
-@keyframes lp-spin {
-  0%, 100% { transform: rotate(-8deg); }
-  50% { transform: rotate(8deg); }
-}
-
-/* Title and actions */
-.lp-content {
-  position: absolute;
-  left: 40px;
-  bottom: 72px;
-  max-width: 640px;
-  transform: translate(calc(var(--mx) * 6px), calc(var(--my) * 4px));
-  transition: transform 0.6s cubic-bezier(.2, .7, .2, 1);
-}
-/* A sharp, high-contrast display serif (Newsreader at its largest optical size), in plain warm white */
-.lp-title {
-  margin: 0;
-  font-family: 'Newsreader', 'Georgia', serif;
-  font-optical-sizing: auto;
-  font-variation-settings: 'opsz' 72;
-  font-weight: 500;
-  font-size: clamp(64px, 10vw, 150px);
-  line-height: 0.92;
-  letter-spacing: -0.03em;
-  text-shadow: 0 4px 30px rgba(0, 0, 0, 0.55);
-}
-/* One word in italic, a soft champagne like the sunlit snow on the peak (calmer than the button gold) */
-.lp-title .lp-accent {
-  font-style: italic;
-  color: #e6c99a;
-  padding-left: 0.06em;
-}
-.lp-title span {
-  display: block;
-  width: fit-content;
-  color: #f7f2e8;
-  opacity: 0;
-  animation: lp-rise 0.9s cubic-bezier(.2, .8, .2, 1) forwards;
-}
-.lp-title span:nth-child(2) { animation-delay: 0.12s; }
-.lp-title span:nth-child(3) { animation-delay: 0.24s; }
-@keyframes lp-rise {
-  from { opacity: 0; transform: translateY(30px) rotate(-2deg); }
-  to { opacity: 1; transform: none; }
-}
-.lp-tag {
-  margin: 20px 0 40px;
-  font-family: 'Oswald', 'Inter', sans-serif; /* same as Sign in / Explore trips / See how it works */
-  font-weight: 500;
-  font-size: clamp(18px, 1.9vw, 24px);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.9);
-  opacity: 0;
-  animation: lp-rise 0.9s 0.45s cubic-bezier(.2, .8, .2, 1) forwards;
-}
-.lp-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 28px;
-  opacity: 0;
-  animation: lp-rise 0.9s 0.6s cubic-bezier(.2, .8, .2, 1) forwards;
-}
-.lp-btn {
-  font-family: 'Oswald', 'Inter', sans-serif;
-  font-weight: 500;
-  font-size: 20px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  text-decoration: none;
-  color: #e9edf2;
-  transition: color 0.2s, background 0.2s, border-color 0.2s, box-shadow 0.2s, transform 0.2s;
-}
-.lp-btn.primary {
-  padding: 10px 30px;
-  border: 1.5px solid rgba(255, 255, 255, 0.8);
-  border-radius: 999px;
-}
-.lp-btn.primary:hover {
-  border-color: #edae49;
-  color: #edae49;
-  box-shadow: 0 0 24px rgba(237, 174, 73, 0.35);
-  transform: translateY(-2px);
-}
-.lp-btn.ghost {
-  border: 0;
-  background: none;
-  padding: 0;
-}
-.lp-top-signin {
-  position: absolute;
-  top: 26px;
-  right: 40px;
-  z-index: 2;
-  font-size: 26px;
-  letter-spacing: 0.05em;
-}
-.lp-btn.ghost:hover {
-  color: #edae49;
-}
-.lp-btn:focus-visible {
-  outline: 3px solid rgba(237, 174, 73, 0.7);
-  outline-offset: 4px;
-  border-radius: 999px;
-}
-
-@media (max-width: 700px) {
-  .lp { --focus: 0.74; } /* centre on the peak */
-  .lp-brand { left: 20px; top: 20px; font-size: 18px; }
-  .lp-compass { width: 32px; height: 32px; }
-  .lp-top-signin { top: 20px; right: 20px; font-size: 20px; }
-  .lp-content { left: 20px; right: 20px; bottom: 48px; }
-  /* keep the mountain and routes clear; only darken behind the title */
-  .lp-shade { background: linear-gradient(180deg, rgba(5, 8, 13, 0.15) 0%, rgba(5, 8, 13, 0) 30%, rgba(5, 8, 13, 0.3) 52%, rgba(5, 8, 13, 0.88) 72%); }
-  .lp-clouds { opacity: 0.6; } /* softer clouds so the small sky doesn't look busy */
-  .lp-actions { gap: 18px; }
-  .lp-btn { font-size: 17px; }
-}
-/* Phones: the name goes on two short lines so it never runs into "Sign in / Join" */
-@media (max-width: 520px) {
-  .lp-brand { font-size: 15px; gap: 8px; }
-  .lp-brand-text { display: flex; flex-direction: column; line-height: 1.1; }
-  .lp-top-signin { font-size: 16px; }
-}
-/* Very narrow phones: logo and Sign in must share one line */
-@media (max-width: 360px) {
-  .lp-brand { font-size: 14px; gap: 6px; }
-  .lp-compass { width: 28px; height: 28px; }
-  .lp-top-signin { font-size: 15px; right: 16px; }
-  .lp-title { font-size: 54px; }
-}
-/* Phones turned sideways: not much height, so everything gets shorter */
-@media (max-height: 520px) and (orientation: landscape) {
-  .lp { --focus: 0.62; }
-  .lp-brand { top: 14px; }
-  .lp-top-signin { top: 12px; }
-  .lp-content { bottom: 18px; }
-  .lp-title { font-size: clamp(34px, 13vh, 72px); }
-  .lp-tag { margin: 6px 0 14px; font-size: 16px; }
-  .lp-btn { font-size: 16px; }
-  .lp-btn.primary { padding: 6px 22px; }
-}
-/* ===== "See how it works" ===== */
-.lp-cue {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-  transform: translateX(-50%);
-  border: 0;
-  background: none;
-  color: rgba(255, 255, 255, 0.85);
-  font-family: 'Oswald', 'Inter', sans-serif;
-  font-size: 15px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-.lp-cue svg {
-  animation: lp-bob 1.8s ease-in-out infinite;
-}
-.lp-cue:hover {
-  color: #edae49;
-}
-.lp-cue:focus-visible {
-  outline: 3px solid rgba(237, 174, 73, 0.7);
-  outline-offset: 4px;
-  border-radius: 8px;
-}
-@keyframes lp-bob {
-  50% { transform: translateY(6px); }
 }
 
 /* ===== The scroll story ===== */
@@ -1377,7 +995,7 @@ onBeforeUnmount(() => {
   pointer-events: auto;
 }
 .lp-step-num {
-  font-family: 'Oswald', 'Inter', sans-serif;
+  font-family: var(--sb-display);
   font-size: 15px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -1385,7 +1003,7 @@ onBeforeUnmount(() => {
 }
 .lp-step-title {
   margin: 10px 0 14px;
-  font-family: 'Newsreader', 'Georgia', serif; /* same serif as the big hero title */
+  font-family: var(--sb-display); /* same serif as the big hero title */
   font-variation-settings: 'opsz' 72;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -1571,7 +1189,7 @@ onBeforeUnmount(() => {
   margin-top: 8px;
   padding: 7px 10px;
   border-radius: 10px;
-  background: #fff;
+  background: #fbf5ea;
   border: 1px solid #e8dfcf;
   color: #8a959c;
   font-size: 11px;
@@ -1760,7 +1378,7 @@ onBeforeUnmount(() => {
 }
 .d-city-text > b {
   display: block;
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: var(--sb-display);
   font-size: 19px;
   font-weight: 500;
   line-height: 1.1;
@@ -1835,7 +1453,7 @@ onBeforeUnmount(() => {
   top: 46px;
   padding: 3px 8px;
   border-radius: 8px;
-  background: #fff;
+  background: #fbf5ea;
   font-size: 10px;
   font-weight: 800;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
@@ -1890,7 +1508,7 @@ onBeforeUnmount(() => {
   display: block;
 }
 .v-head b {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: var(--sb-display);
   font-size: 18px;
   font-weight: 500;
 }
@@ -1928,7 +1546,7 @@ onBeforeUnmount(() => {
   margin-bottom: 6px;
   padding: 7px 10px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 2px 8px rgba(0, 29, 44, 0.07);
 }
 .v-main {
@@ -2034,7 +1652,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 6px 8px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 2px 8px rgba(0, 29, 44, 0.07);
   opacity: 0;
   transform: translateX(40px);
@@ -2167,7 +1785,7 @@ onBeforeUnmount(() => {
   gap: 6px;
   padding: 6px 8px;
   border-radius: 10px;
-  background: #fff;
+  background: #fbf5ea;
   font-size: 9.5px;
   box-shadow: 0 4px 12px rgba(0, 29, 44, 0.12);
 }
@@ -2193,7 +1811,7 @@ onBeforeUnmount(() => {
   gap: 1px;
   padding: 6px 2px 10px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   overflow: hidden;
 }
 .t-hour span {
@@ -2266,7 +1884,7 @@ onBeforeUnmount(() => {
 .t-card {
   padding: 9px 11px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 2px 8px rgba(0, 29, 44, 0.07);
 }
 .t-card-head {
@@ -2317,7 +1935,7 @@ onBeforeUnmount(() => {
   margin-top: 8px;
   padding: 7px 10px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 2px 8px rgba(0, 29, 44, 0.07);
 }
 .t-next div {
@@ -2348,7 +1966,7 @@ onBeforeUnmount(() => {
   font-size: 10px;
 }
 .t-card.money b {
-  font-family: 'Newsreader', Georgia, serif;
+  font-family: var(--sb-display);
   font-size: 24px;
   font-weight: 500;
   color: #edae49;
@@ -2473,7 +2091,7 @@ onBeforeUnmount(() => {
   margin-left: -150px;
   padding: 12px;
   border-radius: 48px;
-  background: #0d1117;
+  background: #00283c;
   box-shadow: 0 0 0 2px #2b3440, 0 40px 80px rgba(0, 0, 0, 0.5);
   transition: transform 0.2s ease-out;
 }
@@ -2485,7 +2103,7 @@ onBeforeUnmount(() => {
   height: 26px;
   margin-left: -46px;
   border-radius: 999px;
-  background: #0d1117;
+  background: #00283c;
 }
 .lp-phone-screen {
   position: relative;
@@ -2581,7 +2199,7 @@ onBeforeUnmount(() => {
   margin: -42px 12px 0;
   padding: 12px 14px;
   border-radius: 16px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 10px 24px rgba(0, 29, 44, 0.14);
 }
 .ph-title {
@@ -2715,7 +2333,7 @@ onBeforeUnmount(() => {
   margin: 0 12px;
   padding: 8px;
   border-radius: 14px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 2px 8px rgba(0, 29, 44, 0.07);
 }
 .ph-stop + .ph-stop {
@@ -2791,7 +2409,7 @@ onBeforeUnmount(() => {
   margin: 0 12px 8px;
   padding: 9px 10px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 2px 8px rgba(0, 29, 44, 0.07);
 }
 .ph-vote-top {
@@ -2861,7 +2479,7 @@ onBeforeUnmount(() => {
   margin: 0 12px 6px;
   padding: 8px 10px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   font-weight: 600;
 }
 .ph-check span {
@@ -2911,7 +2529,7 @@ onBeforeUnmount(() => {
   margin: 0 12px 6px;
   padding: 8px 10px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
 }
 .ph-cost-icon {
   width: 30px;
@@ -2987,7 +2605,7 @@ onBeforeUnmount(() => {
 
 .lp-join-copy h2 {
   margin: 0 0 16px;
-  font-family: 'Newsreader', 'Georgia', serif; /* same serif as the big hero title */
+  font-family: var(--sb-display); /* same serif as the big hero title */
   font-variation-settings: 'opsz' 72;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -3013,7 +2631,7 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: #edae49;
   color: #001d2c;
-  font-family: 'Oswald', 'Inter', sans-serif;
+  font-family: var(--sb-display);
   font-size: 19px;
   font-weight: 600;
   letter-spacing: 0.05em;
@@ -3029,7 +2647,7 @@ onBeforeUnmount(() => {
 }
 .lp-join-link {
   color: #fff;
-  font-family: 'Oswald', 'Inter', sans-serif;
+  font-family: var(--sb-display);
   font-size: 19px;
   font-weight: 500;
   letter-spacing: 0.05em;
@@ -3092,7 +2710,7 @@ onBeforeUnmount(() => {
 .lp-feat-title {
   margin: 0 0 10px;
   text-align: center;
-  font-family: 'Newsreader', 'Georgia', serif; /* same serif as the big hero title */
+  font-family: var(--sb-display); /* same serif as the big hero title */
   font-variation-settings: 'opsz' 72;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -3178,7 +2796,7 @@ onBeforeUnmount(() => {
 }
 .lp-card h3 {
   margin: 20px 8px 8px;
-  font-family: 'Newsreader', 'Georgia', serif; /* same serif as the big hero title */
+  font-family: var(--sb-display); /* same serif as the big hero title */
   font-variation-settings: 'opsz' 72;
   font-weight: 500;
   letter-spacing: -0.02em;
@@ -3281,7 +2899,7 @@ onBeforeUnmount(() => {
   display: grid;
   place-items: center;
   border-radius: 50%;
-  background: #fff;
+  background: #fbf5ea;
   color: #c9c2b5;
   font-size: 22px;
   box-shadow: 0 10px 22px rgba(0, 29, 44, 0.2);
@@ -3301,7 +2919,7 @@ onBeforeUnmount(() => {
   gap: 2px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 10px 20px rgba(0, 29, 44, 0.12);
 }
 .a-bill small, .a-bill span { color: #5b6b75; font-size: 12px; }
@@ -3339,7 +2957,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 12px 16px;
   border-radius: 14px;
-  background: #fff;
+  background: #fbf5ea;
   box-shadow: 0 10px 20px rgba(0, 29, 44, 0.12);
 }
 .a-row b, .a-row small { display: block; }
@@ -3365,7 +2983,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   padding: 9px 12px;
   border-radius: 12px;
-  background: #fff;
+  background: #fbf5ea;
   font-weight: 600;
   box-shadow: 0 6px 14px rgba(0, 29, 44, 0.08);
   top: calc(20px + var(--n) * 52px);
@@ -3425,7 +3043,7 @@ onBeforeUnmount(() => {
   gap: 2px;
   padding: 14px 16px;
   border-radius: 14px;
-  background: #fff;
+  background: #fbf5ea;
   border: 2px dashed #edae49;
   box-shadow: 0 10px 20px rgba(0, 29, 44, 0.12);
 }
@@ -3451,8 +3069,7 @@ onBeforeUnmount(() => {
   .lp-feat-sub { margin-bottom: 36px; font-size: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .lp-hero *, .lp-title span, .lp-tag, .lp-actions { animation: none !important; opacity: 1 !important; }
-  .lp-layer, .lp-content { transition: none; transform: none; }
+  .lp-hero * { animation: none !important; opacity: 1 !important; }
   .lp-step, .sc, .lp-chip, .sc-stop, .sc-bar span, .sc-pillar::before, .lp-device { transition: opacity 0.2s !important; }
   .lp-card, .lp-card-in, .lp-art > *, .a-progress span, .a-tick, .a-ring { transition: none !important; }
   .lp-card { opacity: 1; transform: none; }
@@ -3467,5 +3084,1402 @@ onBeforeUnmount(() => {
 body.lp-body {
   background: #05080d;
   overflow: hidden;
+}
+</style>
+
+<style scoped>
+
+.lp {
+  background: #f8f4e9;
+  color: #17304d;
+}
+
+.lp-hero {
+  min-height: var(--vh);
+  height: var(--vh);
+  background:
+    radial-gradient(circle, rgba(23, 48, 77, 0.10) 1.5px, transparent 1.6px)
+      0 0 / 34px 34px,
+    #f8f4e9;
+  color: #17304d;
+}
+
+.journal-hero {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* ---------- navigation ---------- */
+
+.journal-nav {
+  position: relative;
+  z-index: 10;
+
+  height: 112px;
+  padding: 22px clamp(28px, 4vw, 68px);
+
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.journal-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.journal-logo {
+  width: 66px;
+  height: 66px;
+
+  display: grid;
+  place-items: center;
+
+  border: 4px solid #17304d;
+  border-radius: 18px;
+
+  background: #efbd4e;
+
+  box-shadow: 0 7px 0 #17304d;
+
+  font-size: 30px;
+  transform: rotate(-3deg);
+}
+
+.journal-logo :deep(.dz) {
+  display: block;
+}
+
+.journal-brand-name {
+  font-family: var(--sb-display);
+  font-size: clamp(25px, 2.3vw, 38px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.journal-signin {
+  padding: 15px 29px;
+
+  border: 3px solid #17304d;
+  border-radius: 18px;
+
+  background: #fffaf0;
+  color: #17304d;
+
+  box-shadow: 0 7px 0 #17304d;
+
+  font-family: var(--sb-display);
+  font-size: 19px;
+  font-weight: 600;
+
+  text-decoration: none;
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.journal-signin:hover {
+  transform: translateY(3px);
+  box-shadow: 0 4px 0 #17304d;
+  background: #fff3d2;
+}
+
+/* ---------- main hero ---------- */
+
+.journal-content {
+  position: relative;
+  z-index: 3;
+
+  width: min(1450px, calc(100% - 80px));
+  height: calc(100% - 165px);
+  margin: 0 auto;
+
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(520px, 1.1fr);
+  align-items: center;
+  gap: clamp(35px, 6vw, 100px);
+}
+
+.journal-copy {
+  position: relative;
+  z-index: 5;
+  padding-bottom: 40px;
+}
+
+.journal-eyebrow {
+  display: inline-block;
+
+  margin-bottom: 22px;
+  padding: 9px 16px;
+
+  border: 2px solid #17304d;
+  border-radius: 999px;
+
+  background: #efbd4e;
+
+  font-family: var(--sb-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.journal-copy h1 {
+  margin: 0;
+
+  font-family: var(--sb-display);
+  font-size: clamp(60px, 6.6vw, 108px);
+  line-height: 0.95;
+  letter-spacing: -0.035em;
+
+  color: #17304d;
+}
+
+.journal-copy h1 span {
+  color: #c88931;
+}
+
+.journal-copy p {
+  max-width: 610px;
+  margin: 30px 0 34px;
+
+  font-size: clamp(17px, 1.4vw, 22px);
+  line-height: 1.65;
+
+  color: #536376;
+}
+
+.journal-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 22px;
+}
+
+.journal-primary {
+  min-height: 58px;
+  padding: 0 27px;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+
+  border: 3px solid #17304d;
+  border-radius: 16px;
+
+  font-family: var(--sb-display);
+  font-size: 18px;
+  font-weight: 700;
+
+  cursor: pointer;
+  text-decoration: none;
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.journal-primary {
+  background: #efbd4e;
+  color: #17304d;
+  box-shadow: 0 7px 0 #17304d;
+}
+
+.journal-primary:hover {
+  transform: translateY(3px);
+  box-shadow: 0 4px 0 #17304d;
+}
+
+.journal-primary span {
+  font-size: 25px;
+}
+
+/* ---------- postcard artwork ---------- */
+
+.journal-art {
+  position: relative;
+  width: 100%;
+  height: min(620px, 68vh);
+}
+
+.journal-postcard {
+  position: absolute;
+
+  border: 4px solid #17304d;
+  border-radius: 14px;
+
+  background: #fffaf0;
+
+  box-shadow: 0 15px 30px rgba(23, 48, 77, 0.12);
+}
+
+.postcard-front {
+  width: min(590px, 83%);
+  height: 410px;
+
+  left: 2%;
+  bottom: 7%;
+
+  padding: 22px;
+
+  transform: rotate(-2deg);
+
+  box-shadow:
+    0 17px 35px rgba(23, 48, 77, 0.15),
+    8px 10px 0 rgba(239, 189, 78, 0.16);
+}
+
+.postcard-picture {
+  position: relative;
+  height: 275px;
+
+  overflow: hidden;
+
+  border: 3px solid #17304d;
+  border-radius: 8px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #8fc6d5 0%,
+      #cfe4dc 55%,
+      #eee1b7 100%
+    );
+}
+
+.postcard-caption {
+  padding-top: 14px;
+
+  display: flex;
+  flex-direction: column;
+}
+
+.postcard-caption strong {
+  font-family: var(--sb-display);
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.postcard-caption span {
+  margin-top: 3px;
+  color: #647284;
+}
+
+/* ---------- decorative route ---------- */
+
+.journal-route {
+  position: absolute;
+  z-index: 1;
+
+  left: 36%;
+  right: -5%;
+  bottom: 8%;
+
+  height: 180px;
+
+  border-bottom: 3px dashed rgba(200, 137, 49, 0.55);
+  border-radius: 50%;
+
+  transform: rotate(-7deg);
+
+  pointer-events: none;
+}
+
+.route-plane {
+  position: absolute;
+  left: 60%; /* further along the path, clear of the Start button */
+  bottom: -16px;
+
+  width: 48px;
+  height: 48px;
+
+  display: grid;
+  place-items: center;
+
+  border: 3px solid #17304d;
+  border-radius: 50%;
+
+  background: #efbd4e;
+
+  font-size: 22px;
+
+  transform: rotate(-15deg);
+}
+
+.journal-scroll {
+  position: absolute;
+  z-index: 10;
+
+  left: 50%;
+  bottom: 17px;
+
+  transform: translateX(-50%);
+}
+
+.journal-scroll button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  border: 0;
+  background: transparent;
+
+  color: #17304d;
+
+  font-family: var(--sb-display);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+
+  cursor: pointer;
+}
+
+.journal-arrow {
+  display: inline-block;
+  animation: journal-bounce 1.6s ease-in-out infinite;
+}
+
+@keyframes journal-bounce {
+  50% {
+    transform: translateY(6px);
+  }
+}
+
+/* ---------- responsive ---------- */
+
+@media (max-width: 950px) {
+  .journal-content {
+    width: min(90%, 760px);
+    grid-template-columns: 1fr;
+    align-content: center;
+  }
+
+  .journal-copy {
+    text-align: center;
+    padding-bottom: 0;
+  }
+
+  .journal-copy p {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .journal-actions {
+    justify-content: center;
+  }
+
+  .journal-art {
+    display: none;
+  }
+
+  .journal-route {
+    left: 5%;
+    right: 5%;
+    bottom: 13%;
+  }
+}
+
+@media (max-width: 600px) {
+  .journal-nav {
+    height: 88px;
+    padding: 15px 18px;
+  }
+
+  .journal-logo {
+    width: 48px;
+    height: 48px;
+    border-width: 3px;
+    border-radius: 13px;
+    box-shadow: 0 5px 0 #17304d;
+    font-size: 22px;
+  }
+  .journal-logo :deep(.dz) {
+    width: 30px;
+    height: 30px;
+  }
+
+  .journal-brand {
+    gap: 10px;
+  }
+
+  .journal-brand-name {
+    max-width: 125px;
+    font-size: 18px;
+    line-height: 1.05;
+  }
+
+  .journal-signin {
+    padding: 11px 14px;
+    border-width: 2px;
+    border-radius: 12px;
+    box-shadow: 0 5px 0 #17304d;
+    font-size: 14px;
+  }
+
+  .journal-content {
+    width: calc(100% - 36px);
+    height: calc(100% - 105px);
+  }
+
+  .journal-copy h1 {
+    font-size: clamp(54px, 17vw, 76px);
+  }
+
+  .journal-copy p {
+    margin: 22px auto 27px;
+    font-size: 16px;
+  }
+
+  .journal-eyebrow {
+    font-size: 11px;
+  }
+
+  .journal-actions {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: 300px;
+    margin: auto;
+  }
+
+  .journal-primary {
+    width: 100%;
+  }
+
+  .journal-scroll {
+    bottom: 12px;
+  }
+  /* Phones: no room for the dotted flight path, it would cross the buttons */
+  .journal-route {
+    display: none;
+  }
+}
+
+/* =========================================================
+   TRAVEL JOURNAL THEME — REST OF LANDING PAGE
+   ========================================================= */
+
+/* Shared paper background */
+.lp-story,
+.lp-feat {
+  background:
+    radial-gradient(
+      circle,
+      rgba(23, 48, 77, 0.09) 1.4px,
+      transparent 1.5px
+    ) 0 0 / 34px 34px,
+    #f8f4e9;
+}
+
+/* ---------- HOW IT WORKS / STORY ---------- */
+
+.lp-sticky {
+  color: #17304d;
+}
+
+.lp-step-num {
+  display: inline-flex;
+  width: fit-content;
+
+  padding: 8px 14px;
+  margin-bottom: 16px;
+
+  border: 2px solid #17304d;
+  border-radius: 999px;
+
+  background: #efbd4e;
+  color: #17304d;
+
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.lp-step-title {
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.lp-step-text {
+  color: #596879;
+}
+
+.lp-step-points {
+  color: #17304d;
+}
+
+.lp-step-points li::marker {
+  color: #c88931;
+}
+
+/* Story navigation dots */
+.lp-dot {
+  border-color: #17304d;
+  background: #fffaf0;
+}
+
+.lp-dot.on {
+  background: #efbd4e;
+}
+
+/* ---------- FEATURE SECTION ---------- */
+
+.lp-feat {
+  padding-top: 110px;
+  padding-bottom: 110px;
+}
+
+.lp-feat-title {
+  color: #17304d;
+
+  font-family: var(--sb-display);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.lp-feat-sub {
+  color: #657284;
+}
+
+/* Each feature becomes a scrapbook card */
+.lp-card {
+  border: 3px solid #17304d;
+  border-radius: 22px;
+
+  background: #fffaf0;
+
+  box-shadow: 8px 9px 0 #17304d;
+
+  overflow: visible;
+}
+
+.lp-card-in {
+  background: #fffaf0;
+  border-radius: 19px;
+}
+
+.lp-card h3 {
+  color: #17304d;
+
+  font-family: var(--sb-display);
+  font-weight: 700;
+}
+
+.lp-card p {
+  color: #657284;
+}
+
+/* The mini UI illustration inside each feature */
+.lp-art {
+  background: #f6efdf;
+
+  border: 2px solid rgba(23, 48, 77, 0.16);
+  border-radius: 17px;
+}
+
+/* Story checklist — readable on cream background */
+.lp-step-points li {
+  color: #17304d;
+}
+
+.lp-step-points li::before {
+  color: #c88931;
+}
+
+/* ---------- JOIN SECTION ---------- */
+
+.lp-join-copy h2 {
+  color: #17304d;
+
+  font-family: var(--sb-display);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+
+.lp-join-copy p {
+  color: #657284;
+}
+
+.lp-join-link {
+  color: #17304d;
+  font-weight: 700;
+}
+
+.lp-join-link:hover {
+  color: #c88931;
+}
+
+/* ==============================
+   POSTCARD LANDSCAPE
+   ============================== */
+
+.postcard-picture {
+  position: relative;
+  overflow: hidden;
+}
+
+/* The front postcard: the mountain photo, framed on the peak. Tap the photo: the volcano erupts */
+.postcard-front {
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s;
+}
+.postcard-front:hover {
+  transform: rotate(-1deg) translateY(-6px);
+  box-shadow:
+    0 24px 40px rgba(23, 48, 77, 0.2),
+    8px 14px 0 rgba(239, 189, 78, 0.22);
+}
+.postcard-picture.photo {
+  display: block;
+  width: 100%;
+  padding: 0;
+  background: #0b1620;
+  cursor: pointer;
+}
+.postcard-picture.photo:focus-visible {
+  outline: 3px solid #19b3c4;
+  outline-offset: 3px;
+}
+.picture-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.postcard-picture.photo.shaking {
+  animation: lp-shake 0.5s linear;
+}
+@media (prefers-reduced-motion: reduce) {
+  .postcard-front {
+    transition: none;
+  }
+}
+/* Front card: two strips of washi tape instead of the pin */
+.postcard-washi {
+  position: absolute;
+  top: -14px;
+  z-index: 5;
+  width: 96px;
+  height: 30px;
+  border-left: 2px dashed rgba(255, 255, 255, 0.55);
+  border-right: 2px dashed rgba(255, 255, 255, 0.55);
+  box-shadow: 0 2px 4px rgba(23, 48, 77, 0.18);
+  pointer-events: none;
+}
+.postcard-washi.left {
+  left: -18px;
+  background: repeating-linear-gradient(135deg, rgba(239, 189, 78, 0.92) 0 9px, rgba(247, 210, 120, 0.92) 9px 18px);
+  transform: rotate(-32deg);
+}
+.postcard-washi.right {
+  right: -18px;
+  background: repeating-linear-gradient(135deg, rgba(47, 167, 184, 0.88) 0 9px, rgba(120, 200, 210, 0.88) 9px 18px);
+  transform: rotate(30deg);
+}
+/* The photo as a print: a white border inside the navy edge */
+.postcard-picture.photo {
+  padding: 8px;
+  background: #fbf5ea;
+}
+.postcard-picture.photo .picture-svg {
+  border-radius: 3px;
+}
+/* The entry stamp, inked half over the photo's bottom corner */
+.postcard-caption {
+  padding-right: 112px; /* room for the entry stamp */
+}
+.postcard-entry {
+  position: absolute;
+  right: 22px;
+  bottom: 16px;
+  z-index: 3;
+  width: 104px;
+  color: rgba(31, 125, 139, 0.88);
+  font-family: var(--sb-display);
+  transform: rotate(-12deg);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+}
+/* The passport behind the postcard: a navy cover with gold foil */
+.journal-passport {
+  position: absolute;
+  top: -5%;
+  right: 3%;
+  width: min(300px, 46%);
+  height: 410px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 22px 20px 30px 34px; /* title and crest sit high, where they peek above the postcard */
+  border: 4px solid #0f2238;
+  border-radius: 10px 22px 22px 10px;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.3) 0 16px, rgba(255, 255, 255, 0.07) 16px 18px, transparent 18px),
+    radial-gradient(120% 80% at 30% 15%, rgba(255, 255, 255, 0.09), transparent 60%),
+    radial-gradient(circle, rgba(0, 0, 0, 0.12) 0.8px, transparent 1.2px) 0 0 / 5px 5px, /* fine leather grain */
+    #1d3f5c;
+  color: #e7c46a;
+  box-shadow: 0 15px 30px rgba(23, 48, 77, 0.2), 6px 8px 0 rgba(15, 34, 56, 0.25);
+  transform: rotate(7deg);
+}
+.journal-passport::after { /* gold foil border pressed into the cover */
+  content: '';
+  position: absolute;
+  inset: 12px 12px 12px 28px;
+  border: 1.5px solid rgba(231, 196, 106, 0.45);
+  border-radius: 6px 14px 14px 6px;
+  pointer-events: none;
+}
+.passport-title {
+  font-family: var(--sb-display);
+  font-size: clamp(22px, 2vw, 30px);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+.passport-crest {
+  width: 44%;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.35));
+}
+/* "Start the journey": a big chunky button that bounces you down to the walkthrough */
+.journal-scroll {
+  bottom: 22px;
+}
+.journal-scroll .journal-start {
+  gap: 16px;
+  padding: 10px 12px 10px 26px;
+  border: 3px solid #17304d;
+  border-radius: 999px;
+  background: #fffaf0;
+  box-shadow: 0 6px 0 #17304d;
+  letter-spacing: 0.02em;
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s;
+}
+.journal-scroll .journal-start:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 9px 0 #17304d;
+}
+.journal-scroll .journal-start:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #17304d;
+}
+.journal-scroll .journal-start:focus-visible {
+  outline: 3px solid #19b3c4;
+  outline-offset: 4px;
+}
+.journal-start-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+.journal-start-text strong {
+  font-family: var(--sb-display);
+  font-size: clamp(20px, 1.8vw, 26px);
+  font-weight: 400;
+}
+.journal-start-text small {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0;
+  color: #536376;
+}
+.journal-start .journal-arrow {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 3px solid #17304d;
+  border-radius: 50%;
+  background: #efbd4e;
+  color: #17304d;
+}
+@media (max-width: 600px) {
+  .journal-scroll {
+    bottom: 14px;
+  }
+  .journal-scroll .journal-start {
+    padding: 8px 8px 8px 18px;
+  }
+  .journal-start-text strong {
+    font-size: 19px;
+  }
+  .journal-start-text small {
+    font-size: 11.5px;
+  }
+  .journal-start .journal-arrow {
+    width: 40px;
+    height: 40px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .journal-scroll .journal-start {
+    transition: none;
+  }
+}
+/* =========================================================
+   App previews (the 3D window and the phone) in the app's current look:
+   navy outlines, small hard shadows, Lilita One labels, amber for what's picked.
+   Kept light so the previews stay clean; the 3D tilt and animations are untouched.
+   ========================================================= */
+/* ----- the 3D window ----- */
+.lp-win {
+  border: 3px solid #17304d;
+  background: #fffaf0;
+  box-shadow: 0 10px 0 #17304d, 0 40px 70px rgba(23, 48, 77, 0.35);
+}
+.lp-win .lp-win-bar {
+  background: #17304d;
+}
+.lp-win .lp-win-bar i {
+  border: 1.5px solid #0d1f33;
+}
+.lp-win .w-nav {
+  background: #17304d;
+  border-bottom: 3px solid #0d1f33;
+}
+.lp-win .w-logo {
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #efbd4e;
+}
+.lp-win .w-tab {
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+  color: rgba(255, 250, 240, 0.75);
+}
+.lp-win .w-tab.on {
+  border: 2px solid #0d1f33;
+  border-radius: 10px;
+  background: #efbd4e;
+  color: #17304d;
+  box-shadow: 0 3px 0 #0d1f33;
+  transform: rotate(-2deg);
+}
+.lp-win .w-faces i,
+.lp-phone .ph-faces i {
+  border: 2px solid #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+}
+.lp-win .lp-win-body {
+  background:
+    radial-gradient(circle, rgba(23, 48, 77, 0.07) 1px, transparent 1.4px) 0 0 / 16px 16px,
+    #fffaf0;
+}
+.lp-win b,
+.lp-phone .ph-scroll b {
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+/* chips, toggles, search */
+.lp-win .w-chip,
+.lp-win .w-search,
+.lp-win .w-seg {
+  border: 2px solid #17304d;
+  background: #fffdf8;
+  color: #17304d;
+  box-shadow: 0 2px 0 #17304d;
+}
+.lp-win .w-chip.gold,
+.lp-win .w-seg .on {
+  background: #efbd4e;
+  color: #17304d;
+}
+.lp-win .w-thumb,
+.lp-phone .ph-thumb {
+  border: 2px solid #17304d;
+}
+/* Discover */
+.lp-win .d-country,
+.lp-win .v-quick,
+.lp-win .v-row,
+.lp-win .t-card,
+.lp-win .t-next {
+  border: 2px solid #17304d;
+  border-radius: 12px;
+  background: #fffdf8;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-win .w-score {
+  border: 2px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+  transform: rotate(-6deg);
+}
+.lp-win .d-city {
+  border: 2.5px solid #17304d;
+  box-shadow: 0 4px 0 #17304d;
+}
+.lp-win .d-gem {
+  border: 1.5px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+}
+.lp-win .d-map,
+.lp-win .p-map {
+  border: 2.5px solid #17304d;
+  box-shadow: 0 4px 0 #17304d;
+}
+.lp-win .d-pin {
+  border: 2px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+}
+.lp-win .d-legend,
+.lp-win .d-zoom i {
+  border: 1.5px solid #17304d;
+  background: #fffdf8;
+  color: #17304d;
+}
+/* Vote */
+.lp-win .v-pick,
+.lp-phone .ph-pick {
+  border: 2px solid #17304d;
+  border-radius: 6px;
+  background: #efbd4e;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-style: normal;
+  font-weight: 400;
+  transform: rotate(-3deg);
+}
+.lp-win .v-person {
+  border: 1.5px solid rgba(23, 48, 77, 0.35);
+  background: #fffdf8;
+  color: #17304d;
+}
+.lp-win .v-person.yes {
+  border-color: #17304d;
+  background: #e2f5e8;
+}
+.lp-win .v-yes {
+  border: 2px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-win .sc-bar,
+.lp-phone .ph-bar,
+.lp-phone .ph-progress {
+  border: 1.5px solid #17304d;
+  background: #fffaf0;
+}
+.lp-win .sc-bar span,
+.lp-phone .ph-bar i,
+.lp-phone .ph-progress i {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0 4px, transparent 4px 8px), #efbd4e;
+}
+/* Itinerary: calendar day tabs, outlined stops, sticker numbers, ticket legs */
+.lp-win .p-day {
+  border: 2px solid #17304d;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #17304d;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-win .p-day.on {
+  background: #efbd4e;
+  transform: rotate(-3deg);
+}
+.lp-win .p-status {
+  border: 2px solid #17304d;
+  border-radius: 10px;
+  background: #e2f5e8;
+  color: #17304d;
+}
+.lp-win .sc-stop {
+  border: 2px solid #17304d;
+  border-radius: 12px;
+  background: #fffdf8;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-win .sc-stop.meal {
+  border-style: dashed;
+  background: #ffe9d6;
+  box-shadow: none;
+}
+.lp-win .p-num {
+  border: 2px solid #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+}
+.lp-win .p-chips i,
+.lp-phone .ph-chips i {
+  border: 1.5px solid #17304d;
+  background: #fffdf8;
+  color: #17304d;
+  font-style: normal;
+}
+.lp-win .p-chips i.quiet,
+.lp-phone .ph-chips i.quiet { background: #e2f5e8; }
+.lp-win .p-chips i.busy,
+.lp-phone .ph-chips i.busy { background: #fff1cf; }
+.lp-win .p-leg,
+.lp-phone .ph-leg {
+  align-self: flex-start;
+  width: max-content;
+  padding: 2px 12px;
+  border: 1.5px dashed #17304d;
+  border-radius: 999px;
+  background: #fff1cf;
+  color: #17304d;
+  font-weight: 700;
+}
+.lp-win .p-route {
+  stroke: #17304d;
+  stroke-dasharray: 6 6;
+}
+.lp-win .p-pin {
+  border: 2.5px solid #17304d;
+}
+.lp-win .p-pin i {
+  font-family: var(--sb-display);
+  font-style: normal;
+}
+.lp-win .p-map-foot {
+  border: 2px solid #17304d;
+  background: #fffdf8;
+}
+.lp-win .p-map-foot b,
+.lp-phone .ph-opt {
+  border: 2px solid #17304d;
+  border-radius: 999px;
+  background: #efbd4e;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+  box-shadow: 0 3px 0 #17304d;
+}
+/* Travel smart */
+.lp-win .t-hour {
+  border: 2px solid rgba(23, 48, 77, 0.25);
+  background: #fffdf8;
+}
+.lp-win .t-hour.now {
+  border-color: #17304d;
+  background: #efbd4e;
+}
+.lp-win .t-alert {
+  border: 2px solid #17304d;
+  border-radius: 12px;
+  background: #fff1cf;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-win .t-swap em,
+.lp-win .t-card.money em {
+  border: 2px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-style: normal;
+  font-weight: 400;
+}
+.lp-win .t-go {
+  border: 1.5px solid #17304d;
+  background: #fffdf8;
+  color: #17304d;
+}
+/* The floating notes: cream stickers */
+.lp-chip {
+  border: 2.5px solid #17304d;
+  border-radius: 14px;
+  background: #fffaf0;
+  box-shadow: 0 5px 0 #17304d, 0 20px 40px rgba(23, 48, 77, 0.2);
+}
+.lp-chip b {
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #17304d;
+}
+.lp-chip-icon {
+  border: 2px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  box-shadow: 0 2px 0 #17304d;
+}
+
+/* ----- the phone ----- */
+.lp-phone {
+  background: #17304d;
+  box-shadow: 0 0 0 3px #0d1f33, 0 10px 0 #0d1f33, 0 40px 80px rgba(23, 48, 77, 0.45);
+}
+.lp-phone .lp-phone-screen,
+.lp-phone .ph-scroll {
+  background:
+    radial-gradient(circle, rgba(23, 48, 77, 0.07) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    #fffaf0;
+}
+.lp-phone .ph-top {
+  background: #17304d;
+}
+.lp-phone .ph-appbar b {
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+.lp-phone .ph-card {
+  border: 2.5px solid #17304d;
+  background: #fffaf0;
+  box-shadow: 0 4px 0 #17304d;
+}
+.lp-phone .ph-title {
+  font-family: var(--sb-display);
+  font-weight: 400;
+}
+.lp-phone .ph-days b,
+.lp-phone .ph-days span {
+  border: 2px solid #17304d;
+  border-radius: 8px;
+  background: #fffdf8;
+  color: #17304d;
+  box-shadow: 0 2px 0 #17304d;
+}
+.lp-phone .ph-days b {
+  background: #efbd4e;
+  transform: rotate(-3deg);
+}
+.lp-phone .ph-stop,
+.lp-phone .ph-vote,
+.lp-phone .ph-tiles > div,
+.lp-phone .ph-cost {
+  border: 2px solid #17304d;
+  border-radius: 12px;
+  background: #fffdf8;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-phone .ph-stop.meal {
+  border-style: dashed;
+  background: #ffe9d6;
+  box-shadow: none;
+}
+.lp-phone .ph-votebtn {
+  border: 2px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+}
+.lp-phone .ph-check span {
+  border: 2px solid #17304d;
+  border-radius: 6px;
+  background: #fffdf8;
+}
+.lp-phone .ph-check span.on {
+  background: #efbd4e;
+  color: #17304d;
+}
+.lp-phone .ph-tiles .owe {
+  background: #fde6e1;
+}
+.lp-phone .ph-cost-icon {
+  border: 2px solid #17304d;
+  background: #fff1cf;
+}
+.lp-phone .ph-nav {
+  border-top: 2.5px solid #17304d;
+  border-radius: 0 0 38px 38px;
+  background: #fffaf0;
+  backdrop-filter: none; /* the blur ignored the screen's round corners and showed through */
+  -webkit-backdrop-filter: none;
+}
+.lp-phone .lp-phone-screen {
+  clip-path: inset(0 round 38px); /* everything inside follows the screen's round corners */
+}
+.lp-phone .ph-nav span {
+  padding: 3px 2px;
+  font-family: var(--sb-display);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #536376;
+}
+.lp-phone .ph-nav span.on {
+  border-radius: 10px;
+  background: #efbd4e;
+  color: #17304d;
+  box-shadow: inset 0 0 0 2px #17304d;
+}
+/* The panel behind the phone: the app's night look (ink navy, dots, stitched edge) */
+.lp-join-art {
+  border: 3px solid #0d1f33;
+  background:
+    radial-gradient(420px 300px at 50% 30%, rgba(239, 189, 78, 0.18), transparent 70%),
+    radial-gradient(circle, rgba(255, 250, 240, 0.07) 1.2px, transparent 1.5px) 0 0 / 22px 22px,
+    #17304d;
+  box-shadow: 0 10px 0 #0d1f33;
+}
+.lp-join-art::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border: 2px dashed rgba(255, 250, 240, 0.16);
+  border-radius: 24px;
+  pointer-events: none;
+}
+.lp-join-link {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+/* "Start planning": the chunky amber button used everywhere else */
+.lp-join-btn {
+  border: 3px solid #17304d;
+  background: #efbd4e;
+  color: #17304d;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  font-size: 22px;
+  box-shadow: 0 6px 0 #17304d;
+}
+.lp-join-btn:hover {
+  background: #f7cf6e;
+  color: #17304d;
+  transform: translateY(-3px);
+  box-shadow: 0 9px 0 #17304d;
+}
+.lp-join-btn:active {
+  transform: translateY(4px);
+  box-shadow: 0 2px 0 #17304d;
+}
+/* =========================================================
+   "One app instead of ten tabs": the little illustrations in the app's current look.
+   Cream stickers with navy outlines and small hard shadows, amber for the key bit.
+   `rotate` (not transform) is used for the tilts, so the 3D pop and animations still work.
+   ========================================================= */
+.lp-card {
+  box-shadow: 0 7px 0 #17304d; /* straight down, like everything else */
+}
+.lp-art {
+  border: 2px solid rgba(23, 48, 77, 0.35);
+  background:
+    radial-gradient(circle, rgba(23, 48, 77, 0.08) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    #f6efdf;
+}
+.lp-card:nth-child(odd) .lp-art { rotate: -1deg; }
+.lp-card:nth-child(even) .lp-art { rotate: 1deg; }
+
+/* Floating labels: cream stickers, amber for the important part */
+.lp-art .a-pill,
+.lp-art .a-tip {
+  border: 2.5px solid #17304d;
+  background: #fffaf0;
+  color: #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 0 #17304d;
+  rotate: -3deg;
+}
+.lp-art .a-pill b {
+  padding: 0 6px;
+  border-radius: 6px;
+  background: #efbd4e;
+  color: #17304d;
+  font-weight: 400;
+}
+.art-recs .a-pill.r2 {
+  background: #d6f0f3;
+  color: #17304d;
+  rotate: 2deg;
+}
+.lp-art .a-pill.lock {
+  background: #efbd4e;
+}
+
+/* Cards, tiles and rows inside: thin navy outlines, small hard shadows */
+.lp-art .a-photo,
+.lp-art .a-bill,
+.lp-art .a-row,
+.lp-art .a-check,
+.lp-art .a-ticket:not(.back) {
+  border: 2px solid #17304d;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-art .a-bill,
+.lp-art .a-row,
+.lp-art .a-check {
+  background: #fffdf8;
+}
+.lp-art .a-bill b,
+.lp-art .a-row b,
+.lp-art .a-ticket b,
+.lp-art .a-ring b {
+  font-family: var(--sb-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  color: #17304d;
+}
+.lp-art .a-photo.p1 { rotate: -4deg; }
+.lp-art .a-photo.p2 { rotate: 3deg; }
+.lp-art .a-tag {
+  border: 2px solid #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+  box-shadow: 0 2px 0 #17304d;
+}
+.lp-art .a-tag.t1 { rotate: -6deg; }
+.lp-art .a-tag.t2 { rotate: 4deg; }
+.lp-art .a-heart {
+  border: 2px solid #17304d;
+  background: #fffaf0;
+  box-shadow: 0 3px 0 #17304d;
+}
+.lp-art .a-faces i {
+  border: 2px solid #17304d;
+  font-family: var(--sb-display);
+  font-weight: 400;
+}
+/* The settle-up bar: striped amber, outlined */
+.lp-art .a-progress {
+  border: 2px solid #17304d;
+  background: #fffaf0;
+}
+.lp-art .a-progress span {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.35) 0 5px, transparent 5px 10px), #efbd4e;
+}
+/* Packing: navy-outlined boxes that tick amber */
+.lp-art .a-tick {
+  border: 2px solid #17304d;
+  border-radius: 7px;
+}
+.lp-feat.shown .lp-card:not(.replay) .lp-art .a-tick {
+  border-color: #17304d;
+  background: #efbd4e;
+  color: #17304d;
+}
+/* The match ring gets a navy rim */
+.lp-art .a-ring {
+  box-shadow: 0 0 0 2.5px #17304d, 0 4px 0 2.5px #17304d;
+}
+/* The booked tour: an outlined ticket */
+.lp-art .a-ticket:not(.back) {
+  border-style: solid;
+  background: #fff1cf;
+}
+.lp-art .a-ticket em {
+  color: #17304d;
+  font-weight: 800;
+  text-decoration: underline;
+  text-decoration-color: #efbd4e;
+  text-decoration-thickness: 3px;
+}
+.lp-art .a-ticket.back {
+  border: 2px dashed rgba(23, 48, 77, 0.35);
+}
+@media (prefers-reduced-motion: reduce) {
+  .lp-card .lp-art { rotate: 0deg; }
 }
 </style>
